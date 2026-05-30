@@ -26,6 +26,55 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, status, notes } = body;
+
+    if (!id || !status) {
+      return Response.json({ error: 'id와 status가 필요합니다.' }, { status: 400 });
+    }
+
+    const validStatuses = ['confirmed', 'cancelled', 'completed'];
+    if (!validStatuses.includes(status)) {
+      return Response.json(
+        { error: `status는 ${validStatuses.join(', ')} 중 하나여야 합니다.` },
+        { status: 400 }
+      );
+    }
+
+    const supabase = getServiceClient();
+
+    const { data: reservation, error } = await supabase
+      .from('reservations')
+      .update({
+        status,
+        ...(notes !== undefined && { notes }),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select('*, trial_slots(*)')
+      .single();
+
+    if (error) throw error;
+
+    // Re-open slot if cancelled
+    if (status === 'cancelled' && reservation?.trial_slots) {
+      await supabase
+        .from('trial_slots')
+        .update({ is_available: true })
+        .eq('id', reservation.trial_slots.id);
+    }
+
+    // TODO: Send notification to academy owner when status changes
+
+    return Response.json({ data: reservation });
+  } catch (error) {
+    console.error('PATCH reservation error:', error);
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: CreateReservationRequest & { academy_id: string } =
