@@ -1,26 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-primary-50: #EEF4FF;
+  --color-primary-100: #D9E5FF;
+  --color-primary-200: #B3CBFF;
+  --color-primary-300: #7AA3FF;
+  --color-primary-400: #4A7DFF;
+  --color-primary-500: #2563EB;
+  --color-primary-600: #1D4FD7;
+  --color-primary-700: #1A3FA8;
+  --color-primary-800: #1B3480;
+  --color-primary-900: #1C2D5A;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-accent-50: #FFF5F0;
+  --color-accent-100: #FFE8DB;
+  --color-accent-200: #FFD0B5;
+  --color-accent-300: #FFB088;
+  --color-accent-400: #FF8F5E;
+  --color-accent-500: #F97316;
+  --color-accent-600: #EA6510;
+  --color-accent-700: #C2500C;
+  --color-accent-800: #9A4012;
+  --color-accent-900: #7C3512;
+
+  --color-success: #10B981;
+  --color-error: #EF4444;
+  --color-warning: #F59E0B;
+
+  --font-sans: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  color: #111827;
+  background: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
