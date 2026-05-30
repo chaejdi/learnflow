@@ -13,8 +13,6 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getBrowserClient } from '@/lib/supabase';
-
 const navItems = [
   { label: '대시보드', href: '/dashboard', icon: LayoutDashboard },
   { label: '상담 내역', href: '/dashboard/inquiries', icon: MessageSquare },
@@ -31,9 +29,7 @@ export default function Sidebar() {
     setOpen(false);
   }, [pathname]);
 
-  async function handleLogout() {
-    const supabase = getBrowserClient();
-    await supabase.auth.signOut();
+  function handleLogout() {
     router.push('/login');
   }
 
