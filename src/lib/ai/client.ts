@@ -1,23 +1,21 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
 // [Claude] Anthropic SDK — 크레딧 충전 후 다시 활성화 가능
 // import Anthropic from '@anthropic-ai/sdk';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
+const FALLBACK = '죄송합니다. 지금 답변을 준비하는 데 문제가 있었어요. 잠시 후 다시 문의해 주세요. 급하신 경우 원장님께 직접 전달하겠습니다.';
+
 // 한자(CJK) 코드포인트 범위: Ext-A, 통합, 호환 한자.
-// 한글(0xAC00–0xD7A3)은 이 범위에 포함되지 않는다. (Gemini는 거의 한자를 안 섞지만
-// 안전망으로 유지한다.) 리터럴/유니코드 이스케이프 깨짐을 피해 숫자 코드포인트로만 판별.
+// 한글(0xAC00–0xD7A3)은 포함되지 않는다. 숫자 코드포인트로만 판별(리터럴 깨짐 방지).
 const CJK_RANGES: [number, number][] = [
-  [0x3400, 0x4dbf], // CJK 확장 A
-  [0x4e00, 0x9fff], // CJK 통합 한자
-  [0xf900, 0xfaff], // CJK 호환 한자
+  [0x3400, 0x4dbf],
+  [0x4e00, 0x9fff],
+  [0xf900, 0xfaff],
 ];
 
-function isHanja(codePoint: number): boolean {
-  return CJK_RANGES.some(([lo, hi]) => codePoint >= lo && codePoint <= hi);
+function isHanja(cp: number): boolean {
+  return CJK_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi);
 }
-
 function hasHanja(text: string): boolean {
   for (const ch of text) {
     const cp = ch.codePointAt(0);
@@ -25,7 +23,6 @@ function hasHanja(text: string): boolean {
   }
   return false;
 }
-
 function stripHanja(text: string): string {
   let out = '';
   for (const ch of text) {
@@ -35,42 +32,70 @@ function stripHanja(text: string): string {
   return out.replace(/\s{2,}/g, ' ').trim();
 }
 
-let _genAI: GoogleGenerativeAI | null = null;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Gemini 2.5 Flash 호출 (REST 직접 호출).
+ * - thinkingBudget=0: 추론 토큰 소모를 꺼서 maxOutputTokens가 답변에 온전히 쓰이게 함.
+ *   (켜두면 추론이 토큰을 다 먹어 빈 응답/잘림이 발생한다.)
+ * - 503/429(과부하·레이트리밋)는 일시적이므로 짧게 재시도한다.
+ */
 async function callGemini(
   apiKey: string,
   systemPrompt: string,
   messages: Message[],
   temperature: number
 ): Promise<string> {
-  if (!_genAI) _genAI = new GoogleGenerativeAI(apiKey);
+  const url =
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' +
+    encodeURIComponent(apiKey);
 
-  const model = _genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: systemPrompt,
-  });
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: messages.map((m) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: {
+      temperature,
+      maxOutputTokens: 500,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  };
 
-  // 마지막 사용자 메시지를 sendMessage로 보내고, 그 이전은 history로 전달한다.
-  const history = messages.slice(0, -1).map((m) => ({
-    role: m.role === 'user' ? 'user' : ('model' as const),
-    parts: [{ text: m.content }],
-  }));
-  const last = messages[messages.length - 1];
+  let lastErr = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
-  const chat = model.startChat({
-    history,
-    generationConfig: { temperature, maxOutputTokens: 500 },
-  });
+    if (res.status === 503 || res.status === 429) {
+      lastErr = `HTTP ${res.status}`;
+      await sleep(800 * (attempt + 1)); // 0.8s, 1.6s 백오프
+      continue;
+    }
 
-  const result = await chat.sendMessage(last?.content ?? '');
-  return result.response.text();
+    if (!res.ok) {
+      throw new Error(`Gemini API error: ${res.status} ${await res.text()}`);
+    }
+
+    const data = await res.json();
+    const parts = data?.candidates?.[0]?.content?.parts ?? [];
+    const text = parts.map((p: { text?: string }) => p.text ?? '').join('').trim();
+    if (text) return text;
+    lastErr = 'empty response';
+    await sleep(500);
+  }
+
+  throw new Error(`Gemini 재시도 실패: ${lastErr}`);
 }
 
 /**
- * AI 응답 생성
- * 현재: Gemini 2.5 Flash (저렴 + 한국어 우수 + 한자 문제 없음)
- * 필요 환경변수: GOOGLE_GEMINI_API_KEY (Google AI Studio에서 발급)
- * 한자 가드는 안전망으로만 유지(Gemini에선 거의 발동하지 않음).
+ * AI 응답 생성 (Gemini 2.5 Flash).
+ * 어떤 경우에도 throw하지 않고 문자열을 반환한다 — 호출부(웹훅/chat)가 AI 실패와
+ * 무관하게 대화를 항상 저장할 수 있도록 하기 위함. (실패 시 안내문 반환)
  */
 export async function generateAIResponse(
   systemPrompt: string,
@@ -78,46 +103,36 @@ export async function generateAIResponse(
 ): Promise<string> {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('GOOGLE_GEMINI_API_KEY 환경변수가 설정되지 않았습니다.');
+    console.error('GOOGLE_GEMINI_API_KEY 미설정');
+    return FALLBACK;
   }
 
-  let text = await callGemini(apiKey, systemPrompt, messages, 0.5);
-
-  // 안전망: 만에 하나 한자가 섞이면 제거(한글 보존).
-  if (hasHanja(text)) {
-    text = stripHanja(text);
+  try {
+    let text = await callGemini(apiKey, systemPrompt, messages, 0.5);
+    if (hasHanja(text)) text = stripHanja(text); // 안전망(Gemini에선 거의 발동 안 함)
+    return text || FALLBACK;
+  } catch (err) {
+    console.error('generateAIResponse 실패:', err);
+    return FALLBACK;
   }
-
-  return text || '죄송합니다. 답변을 생성하지 못했습니다.';
 
   // ──────────────────────────────────────────────
   // [Groq] Llama 3.3 70B — 무료 폴백 (한국어에 가끔 한자 섞임)
-  // ──────────────────────────────────────────────
   // const apiKey = process.env.GROQ_API_KEY;
-  // const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  // const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
   //   method: 'POST',
-  //   headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({
-  //     model: 'llama-3.3-70b-versatile',
+  //   headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+  //   body: JSON.stringify({ model: 'llama-3.3-70b-versatile',
   //     messages: [{ role: 'system', content: systemPrompt }, ...messages],
-  //     max_tokens: 500,
-  //     temperature: 0.3,
-  //   }),
+  //     max_tokens: 500, temperature: 0.3 }),
   // });
-  // const data = await response.json();
-  // return data.choices?.[0]?.message?.content || '죄송합니다. 답변을 생성하지 못했습니다.';
+  // return (await r.json()).choices?.[0]?.message?.content || FALLBACK;
 
   // ──────────────────────────────────────────────
-  // [Claude] 크레딧 충전 후 아래 코드로 교체
-  // ──────────────────────────────────────────────
+  // [Claude] 크레딧 충전 후
   // const anthropic = new Anthropic();
-  // const aiResponse = await anthropic.messages.create({
-  //   model: 'claude-sonnet-4-6',
-  //   max_tokens: 500,
-  //   system: systemPrompt,
-  //   messages: messages.map((m) => ({ role: m.role, content: m.content })),
-  // });
-  // return aiResponse.content[0].type === 'text'
-  //   ? aiResponse.content[0].text
-  //   : '죄송합니다. 답변을 생성하지 못했습니다.';
+  // const a = await anthropic.messages.create({ model: 'claude-sonnet-4-6',
+  //   max_tokens: 500, system: systemPrompt,
+  //   messages: messages.map((m) => ({ role: m.role, content: m.content })) });
+  // return a.content[0].type === 'text' ? a.content[0].text : FALLBACK;
 }
