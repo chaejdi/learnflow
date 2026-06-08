@@ -93,7 +93,8 @@ export default function SchedulePage() {
   const [tab, setTab] = useState<'timetable' | 'trial'>('timetable');
 
   // 정규 시간표 state
-  const [slots, setSlots] = useState<TimeSlot[]>(mockSlots);
+  const [slots, setSlots] = useState<TimeSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [slotForm, setSlotForm] = useState<SlotForm>(emptySlotForm);
   const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
@@ -133,25 +134,87 @@ export default function SchedulePage() {
     }
   }, [academyId, isDemo]);
 
+  const fetchSchedules = useCallback(async () => {
+    if (isDemo) {
+      setSlots(mockSlots);
+      return;
+    }
+    if (!academyId) return;
+    try {
+      setSlotsLoading(true);
+      const res = await apiFetch(`/api/schedules?academy_id=${academyId}`);
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setSlots(json.data.map((s: { id: string; subject_name: string; day_of_week: string; time_start: string; time_end: string; teacher: string; room: string }) => ({
+          id: s.id,
+          subject: s.subject_name,
+          day: s.day_of_week,
+          startTime: s.time_start?.slice(0, 5) || '',
+          endTime: s.time_end?.slice(0, 5) || '',
+          teacher: s.teacher || '',
+          room: s.room || '',
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to fetch schedules:', error);
+    } finally {
+      setSlotsLoading(false);
+    }
+  }, [academyId, isDemo]);
+
   useEffect(() => {
     if (!academyLoading && academyId) {
       fetchSubjects();
       fetchTrialSlots();
+      fetchSchedules();
     }
-  }, [academyLoading, academyId, fetchSubjects, fetchTrialSlots]);
+  }, [academyLoading, academyId, fetchSubjects, fetchTrialSlots, fetchSchedules]);
 
   // 정규 시간표 핸들러
-  function handleAddSlot(e: React.FormEvent) {
+  async function handleAddSlot(e: React.FormEvent) {
     e.preventDefault();
-    const newSlot: TimeSlot = { ...slotForm, id: Date.now().toString() };
-    setSlots((prev) => [...prev, newSlot]);
-    setShowSlotModal(false);
-    setSlotForm(emptySlotForm);
+    if (isDemo) {
+      const newSlot: TimeSlot = { ...slotForm, id: Date.now().toString() };
+      setSlots((prev) => [...prev, newSlot]);
+      setShowSlotModal(false);
+      setSlotForm(emptySlotForm);
+      return;
+    }
+    try {
+      const res = await apiFetch('/api/schedules', {
+        method: 'POST',
+        body: JSON.stringify({
+          academy_id: academyId,
+          subject_name: slotForm.subject,
+          day_of_week: slotForm.day,
+          time_start: slotForm.startTime,
+          time_end: slotForm.endTime,
+          teacher: slotForm.teacher,
+          room: slotForm.room,
+        }),
+      });
+      if (res.ok) {
+        await fetchSchedules();
+        setShowSlotModal(false);
+        setSlotForm(emptySlotForm);
+      }
+    } catch (error) {
+      console.error('Failed to add schedule:', error);
+    }
   }
 
-  function handleDeleteSlot(id: string) {
+  async function handleDeleteSlot(id: string) {
     if (!confirm('이 시간표를 삭제하시겠습니까?')) return;
-    setSlots((prev) => prev.filter((s) => s.id !== id));
+    if (isDemo) {
+      setSlots((prev) => prev.filter((s) => s.id !== id));
+      return;
+    }
+    try {
+      await apiFetch(`/api/schedules?id=${id}`, { method: 'DELETE' });
+      await fetchSchedules();
+    } catch (error) {
+      console.error('Failed to delete schedule:', error);
+    }
   }
 
   function getSlotsForDayAndTime(day: string, time: string) {

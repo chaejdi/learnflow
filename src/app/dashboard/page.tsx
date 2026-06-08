@@ -94,8 +94,18 @@ export default function DashboardPage() {
       const reservations = resJson.data || [];
       const subjects = subJson.data || [];
 
-      const totalInquiries = conversations.length;
-      const totalReservations = reservations.length;
+      // 이번 달 필터링
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const thisMonthConversations = conversations.filter(
+        (c) => c.created_at >= monthStart
+      );
+      const thisMonthReservations = reservations.filter(
+        (r: { created_at: string }) => r.created_at >= monthStart
+      );
+
+      const totalInquiries = thisMonthConversations.length;
+      const totalReservations = thisMonthReservations.length;
       const totalEnrolled = subjects.reduce(
         (sum: number, s: { enrolled_count: number }) => sum + (s.enrolled_count || 0),
         0
