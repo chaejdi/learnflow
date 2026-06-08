@@ -27,9 +27,13 @@ export async function requireAuth(
 
   const authHeader = request.headers.get('authorization');
 
-  // 토큰이 없으면 데모 유저로 통과 (로그인 미구현 상태)
+  // Supabase가 설정된 정상 모드에서는 토큰이 없으면 인증 거부(401).
+  // 로그인된 클라이언트는 apiFetch가 항상 Bearer 토큰을 첨부한다.
   if (!authHeader?.startsWith('Bearer ')) {
-    return DEMO_USER;
+    return Response.json(
+      { error: '로그인이 필요합니다.' },
+      { status: 401 }
+    );
   }
 
   const token = authHeader.slice(7);

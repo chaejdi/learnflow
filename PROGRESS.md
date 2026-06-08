@@ -1,130 +1,113 @@
-# LearnFlow 개발 진행 상황
+# LearnFlow 개발 진행 상황 (단일 진실 소스 / SSOT)
+
+> 마지막 업데이트: 2026-06-08 · 실제 코드 기준으로 작성됨
+> 제품 스펙은 [PROJECT_SPEC.md](./PROJECT_SPEC.md) 참고. (구버전 PROJECT_STATUS.md는 이 문서로 통합·삭제됨)
 
 ## 프로젝트 개요
 - **서비스**: 런플로우 (LearnFlow) — AI 기반 학원 학부모 상담 자동화 플랫폼
-- **스택**: Next.js 16 + Supabase (PostgreSQL) + Claude API + 카카오톡 연동
-- **목표**: 학부모 카톡 문의 → AI 자동 응답 → 체험수업 예약 → 원장 대시보드 관리
-- **모델**: 학원별 구독 SaaS (멀티테넌트). 한 계정 = 한 학원(현재 1:1).
+- **스택**: Next.js 16 + Supabase(PostgreSQL) + Claude API + 토스페이먼츠 + 카카오톡 연동
+- **핵심 루프**: 학부모 카톡 문의 → AI 자동 응답 → 체험수업 예약 → 원장 대시보드 관리
+- **모델**: 학원별 구독 SaaS(멀티테넌트). 1계정 = 1학원(현재 1:1).
 
 ---
 
-## 완료된 작업
+## ✅ 완료된 것 (실제 코드/커밋 기준)
 
-### Phase 1~6 (기반 구축)
-- **Phase 1 공통 유틸**: `useAcademy` 훅, `apiFetch`(인증 토큰 자동 첨부)
-- **Phase 2 카카오 웹훅 검증**: GET 핸들러(오픈빌더 콜백 등록용)
-- **Phase 3 대시보드 API 연동**: 과목/예약/설정/메인 대시보드 mock → 실제 Supabase
-- **Phase 4 체험수업 슬롯**: `/api/trial-slots` + 시간표 관리 탭
-- **Phase 5 인증**: 로그인 폼 + 미들웨어(비활성) + signOut
-- **Phase 6 알림톡**: `sendAlimtalk()` + 예약 확정 시 자동 발송
+### 1. 랜딩 / 디자인
+- 랜딩 페이지(`src/app/page.tsx`) + 컴포넌트(Header, Hero, Features, HowItWorks, Pricing, FAQ, Footer)
+- 디자인 토큰(`src/styles/design-tokens.ts`), Noto Sans KR, Tailwind v4 커스텀 테마
+- 브랜딩: 런플로우 모노그램 마크 + 학원명 사이드바
 
-### Phase 7: 멀티테넌트 전환 + UI 다듬기 (2026-06-05 세션)
+### 2. 인증 (auth)
+- 로그인(`/login`), 회원가입(`/signup`), 비밀번호 재설정(`/reset-password`, `/reset-password/update`)
+- **미들웨어 인증 가드 활성화** — `src/middleware.ts`가 `/dashboard/:path*` 보호. Supabase auth 쿠키 없으면 `/login?redirect=`로 리다이렉트.
+- `requireAuth` / `isAuthError`(`src/lib/auth.ts`) — API 라우트 인증 가드
 
-#### A. 사이드바 레이아웃 버그 수정
-대시보드에서 사이드바가 가로로 찌그러져 글자가 세로로 쪼개지던 문제.
-- **원인**: flex 레이아웃에서 `<main>`에 `min-w-0`이 없어 긴 메시지(`truncate`의 nowrap)가 main을 밀어내고, 사이드바엔 `flex-shrink-0`이 없어 찌그러짐.
-- **수정**:
-  - `src/app/dashboard/layout.tsx` — `<main>`에 `min-w-0` 추가
-  - `src/components/dashboard/Sidebar.tsx` — 데스크탑 `<aside>`에 `flex-shrink-0` 추가
+### 3. 멀티테넌트 / 온보딩
+- 온보딩: 회원가입 폼에서 계정 + 학원 동시 생성. 이메일 인증 ON이어도 동작(`src/lib/onboarding.ts` 임시 보관 → 첫 로그인 시 생성)
+- 학원 격리: `GET /api/academies/me`(owner_id = 로그인 유저), 모든 학원 API에 소유권 검사
+- `useAcademy` 훅 — 내 학원 id/name/구독상태 제공
 
-#### B. 카카오 라우팅 멀티테넌트화 (B안: bot.id 매칭)
-모든 학원이 **동일한 웹훅 URL**(`/api/kakao/webhook`)을 쓰고, 카카오가 보내는 `bot.id`를
-`academies.kakao_channel_id`와 매칭해 어느 학원인지 식별.
-- `src/app/api/kakao/webhook/route.ts` — `bot.id`로 학원 조회. **위험한 "첫 학원" fallback 제거.**
-  미연결 채널엔 봇 ID를 안내 메시지로 돌려줌(원장이 설정에 입력하도록). `?academy_id=`는 테스트 override로 유지.
-- `src/app/dashboard/settings/page.tsx` — 웹훅 URL을 학원 공통으로, "카카오톡 채널 ID" → **"카카오 봇 ID"** 라벨/안내로 변경.
-- (코드) `PATCH /api/academies` — 봇 ID 중복 연결 방지(다른 학원이 이미 쓰면 409).
-- (DB, **미적용**) `supabase/migrations/003_multitenant_kakao_routing.sql` — `kakao_channel_id` 부분 unique 인덱스 + 조회 인덱스.
+### 4. AI 챗봇
+- 카카오 웹훅(`/api/kakao/webhook`) — `payload.bot.id`로 `academies.kakao_channel_id` 매칭해 학원 식별 (위험한 "첫 학원" fallback 제거됨). 미연결 채널엔 봇 ID 안내 응답.
+- chat API(`/api/chat`) — 대화 이력 + Claude 호출
+- **AI 응답 커스터마이징** — 학원별 `ai_custom_prompt`(migration 005)로 시스템 프롬프트 조정
+- 시스템 프롬프트 생성(`src/lib/ai/system-prompt.ts`) — 학원 DB 정보 기반(hallucination 방지)
 
-#### C. 온보딩 (회원가입 → 학원 자동 생성)
-- `src/app/signup/page.tsx` — 계정 + 학원을 한 폼에서 생성. (NEW)
-- `POST /api/academies` — 로그인 유저 명의로 학원 생성. 순환 FK(`academies.owner_id`↔`users.id`) 때문에
-  `users` 행 보장 → 학원 생성 → `users.academy_id` 연결 순서로 처리. 1계정=1학원(중복 생성 차단).
-- `src/lib/onboarding.ts` — `PENDING_ACADEMY_KEY`. 이메일 인증 ON이어도 동작하도록 학원정보 임시 보관. (NEW)
-- `src/app/login/page.tsx` — 로그인 직후 보관된 학원정보로 생성(인증 후 첫 로그인) + "회원가입" 링크.
+### 5. 대시보드
+- 메인(`/dashboard`) — 통계 4종(이번달 필터링) + 최근 문의
+- 문의 내역(`/dashboard/inquiries`) — 대화 목록 + 채팅 뷰 + 원장 직접 답변
+- 예약 관리(`/dashboard/reservations`) — 확정/취소
+- 시간표(`/dashboard/schedule`) — 정규 시간표 DB 저장
+- 과목(`/dashboard/subjects`) — 과목 CRUD
+- 설정(`/dashboard/settings`) — 학원 정보 + 카카오 봇 ID + AI 커스텀 프롬프트
+- **전환율 분석(`/dashboard/analytics`)** — 월별 문의→예약 퍼널 시각화
+- 시뮬레이터(`/simulator`) — AI 응답 테스트 도구(`/api/academies/first` 의도적 사용)
 
-#### D. 대시보드 학원별 격리 (로그인 계정 기준)
-- `GET /api/academies/me` — `owner_id = 로그인 유저`인 학원만 반환(없으면 `data:null`). uuid 가드로 미로그인/데모 안전 처리. (NEW)
-- `src/hooks/useAcademy.ts` — `/api/academies/first`(첫 학원) → `/api/academies/me`(내 학원)로 전환. `academyName`도 반환.
-- `src/app/dashboard/inquiries/page.tsx` — 동일하게 `/me`로 전환(토큰 포함).
-- `src/app/dashboard/page.tsx` — 학원 없을 때 **무한 로딩 스피너 버그 수정**(`setLoading(false)`).
-- `GET/PATCH /api/academies` — **소유권 검사 추가**(남의 학원 조회·수정 차단).
+### 6. 결제 / 구독 (토스페이먼츠)
+- 플랜: 무료체험(0, 14일)/기본(19,900, AI 200건)/프로(39,900, 무제한) — migration 004
+- 빌링(`/dashboard/billing`) + 카드 등록 플로우(`register`, `success`, `fail`)
+- API: `/api/billing`(구독+사용량 조회), `/api/billing/card`, `/api/billing/subscribe` — 정기결제 빌링키 발급
 
-#### E. 데이터 정리 (실제 DB 작업)
-- `우리동네 수학학원`(155f…, 유령 owner `demo@learnflow.kr`) + 대화 17건 삭제.
-- 결과: `짱짱맨 수학학원`(owner `chaejdi2245@gmail.com`)만 남음. 온보딩 플로우로 실제 생성된 학원.
-- `demo@learnflow.kr` users 행은 `academy_id=null`로 정리(무해).
+### 7. 법적 고지
+- 이용약관(`/terms`), 개인정보처리방침(`/privacy`)
 
-#### F. 사이드바 브랜딩 세련화
-- 상단을 **런플로우 모노그램 마크(`L`, 블루 그라데이션 라운드 박스) + 학원명(메인)** 구조로.
-  브랜드는 마크로 조용히 드러내고(hover 시 "런플로우" 툴팁), 메인은 학원 이름.
-- `src/components/dashboard/Sidebar.tsx` + `useAcademy.academyName` 사용.
+### 8. 인프라
+- `vercel.json` 한국 리전(icn1), `next build` 통과, `/api/health` 헬스체크
 
 ---
 
-## 멀티테넌트 라우팅 구조 (현재)
-
-```
-[학부모 — 로그인 안 함]
-  행복영어학원 카톡 채널 → 오픈빌더 → POST /api/kakao/webhook  (URL 학원 공통)
-                                          └ payload.bot.id 로 academies.kakao_channel_id 매칭 → 해당 학원
-
-[원장 — 로그인 함]
-  /login → 세션 토큰 → 대시보드 → GET /api/academies/me
-                                     └ owner_id = 로그인 유저 → 본인 학원 데이터만
-```
-
----
-
-## Supabase 설정
+## 🗄️ Supabase
 
 ### 프로젝트
 - **Project ID**: lorpaqfwkatavuzxayan / **Region**: ap-northeast-2(서울)
 - **URL**: https://lorpaqfwkatavuzxayan.supabase.co
 - `.env.local`: SUPABASE URL/ANON/SERVICE_ROLE, ANTHROPIC_API_KEY 설정됨
 
-### 마이그레이션
-- ✅ `001_initial_schema.sql` — 테이블 6개 + RLS 정책
-- ✅ `002_improvements.sql` — updated_at 트리거, 인덱스, 제약
-- ⛔ `003_multitenant_kakao_routing.sql` — **미적용(DDL이라 수동 적용 필요)**. `kakao_channel_id` unique/조회 인덱스.
+### 마이그레이션 적용 상태 (2026-06-08 service role로 실 DB 검증)
+| 파일 | 내용 | 적용 |
+|---|---|---|
+| `001_initial_schema.sql` | 테이블 6개 + RLS | ✅ |
+| `002_improvements.sql` | updated_at 트리거, 인덱스 | ✅ |
+| `003_multitenant_kakao_routing.sql` | kakao_channel_id unique/조회 인덱스 | ✅ 컬럼 확인됨 (인덱스 자체는 PostgREST로 미확인, 앱단 중복검사 있음) |
+| `004_billing_schema.sql` | plans/subscriptions/payments/usage_logs | ✅ 4개 테이블 + plans 시드 3건(trial/basic/pro) 확인 |
+| `005_ai_custom_prompt.sql` | academies.ai_custom_prompt 컬럼 | ✅ 컬럼 확인됨 |
 
-### 현재 계정/데이터 상태
-- auth: `chaejdi2245@gmail.com`(인증됨, 메인) / `learnflow@gmail.com`(미인증, 테스트 흔적)
-- 학원: `짱짱맨 수학학원`(chaejdi2245 소유) — 과목/대화 비어 있음(신규)
+> **결론: 003~005 모두 DB에 반영됨. 런타임 깨질 위험 없음.** 결제·AI커스텀 코드가 의존하는 테이블/컬럼 전부 존재.
+> 유일한 미확인: 003의 unique 인덱스 존재 여부(기능엔 영향 없음 — `PATCH /api/academies`가 앱 레벨에서 봇ID 중복을 막음). 확실히 하려면 Supabase SQL 에디터에서 `\d academies` 또는 `select indexname from pg_indexes where tablename='academies'` 한 번 실행.
 
 ---
 
-## 다음 할 일
+## 📋 남은 일 (TODO)
 
-### 즉시 (이어서 하면 좋은 것)
-- [ ] **마이그레이션 003 적용** — Supabase SQL 에디터에 붙여넣기 또는 `npx supabase login && link && db push`
-- [ ] **로그인 E2E 검증** — `chaejdi2245@gmail.com` 로그인 → 짱짱맨만 보이는지(격리), 사이드바에 학원명 표시 확인
-- [ ] **짱짱맨 시드** — 과목/시간표 등록, 상담내역의 "테스트 대화 생성"으로 샘플 채우기
-- [ ] **봇 ID 연결 검증** — 설정에 봇 ID 입력 → 그 bot.id로 webhook 호출 시 짱짱맨으로 라우팅되는지
+### 🔴 1순위 — DB/검증 (지금 코드가 도는지)
+- [x] ~~마이그레이션 003~005 실제 DB 적용 여부 점검~~ → **2026-06-08 검증 완료, 전부 적용됨**
+- [ ] **E2E 검증** — 로그인 → 학원 격리 확인 → 결제 등록 → AI 응답까지 한 바퀴 (← 이제 여기가 1순위)
+- [ ] 짱짱맨 학원 시드(과목/시간표/샘플 대화)로 대시보드·전환율 채워보기
 
-### 멀티테넌트 하드닝 (점검 필요)
-- [ ] `middleware.ts` 인증 활성화 (현재 모든 요청 통과 TODO 상태)
-- [ ] `requireAuth` — Supabase 설정 상태에서 토큰 없으면 DEMO_USER로 통과하는 부분 재검토(401이 맞을 수 있음)
-- [ ] conversations/reservations/subjects/trial-slots API들도 owner 소유권 검사 점검
-- [ ] `simulator/page.tsx`는 여전히 `/api/academies/first` 사용(테스트 도구라 의도적) — 필요 시 `/me`로
-- [ ] RLS 정책은 현재 service role로 우회 중 — 정책 자체 점검
-- [ ] (확장 시) 1계정 다(多)학원 지원 — `/me`·`POST`·학원 선택 UI 변경 필요
+### 🟡 2순위 — 하드닝
+- [ ] conversations/reservations/subjects/trial-slots API 소유권 검사 일관성 점검
+- [x] ~~`requireAuth` — 토큰 없을 때 DEMO_USER 통과 부분 재검토~~ → **2026-06-08 수정: Supabase 설정 모드에선 토큰 없으면 401 반환. 데모 모드(미설정)는 그대로.**
+- [ ] RLS 정책 자체 점검(현재 service role로 우회 중)
+- [ ] 결제 실패/구독 만료(past_due, expired) 상태 처리 검증
 
-### 프로덕션 배포 전
+### 🟢 3순위 — 프로덕션 외부 작업 (코드 밖, 사람이 직접)
 - [ ] 카카오 비즈니스 채널 등록 + 오픈빌더 스킬에 웹훅 URL 등록 + 봇 ID 입력
-- [ ] 알림톡 메시지 템플릿 등록/승인 (KAKAO_ADMIN_KEY, KAKAO_SENDER_KEY)
+- [ ] 알림톡 메시지 템플릿 등록/**승인**(KAKAO_ADMIN_KEY, KAKAO_SENDER_KEY)
+- [ ] 토스페이먼츠 실 계약/라이브 키 발급
 - [ ] Vercel 배포 + 환경변수 세팅
-
-### 사업 측면
 - [ ] 실제 학원 1곳 무료 적용 → 성과 데이터(응답시간, 예약 전환율) 수집
 
 ---
 
-## 핵심 루프
+## 멀티테넌트 라우팅 구조
 
 ```
-학부모 카톡 문의 → /api/kakao/webhook(POST) → bot.id로 학원 식별
-  → AI(Claude) 자동 응답 → conversations 저장
-  → 원장 대시보드(/dashboard/inquiries) 확인 → 에스컬레이션 시 직접 답변
-  → 체험수업 예약 → 원장 확정 → 알림톡 발송
+[학부모 — 로그인 안 함]
+  학원 카톡 채널 → 오픈빌더 → POST /api/kakao/webhook  (URL 학원 공통)
+                                └ payload.bot.id 로 academies.kakao_channel_id 매칭 → 해당 학원
+
+[원장 — 로그인 함]
+  /login → 세션 토큰 + 미들웨어 가드 → 대시보드 → GET /api/academies/me
+                                          └ owner_id = 로그인 유저 → 본인 학원 데이터만
 ```
