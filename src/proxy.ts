@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export function middleware(request: NextRequest) {
+// Next.js 16부터 Middleware는 Proxy로 명칭이 바뀌었다(기능은 동일).
+export function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
   if (!supabaseUrl) {
