@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -15,7 +15,17 @@ function isSupabaseConfigured() {
 }
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center min-h-screen"><Loader2 className="animate-spin" /></div>}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/dashboard';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,7 +38,7 @@ export default function LoginPage() {
     setError('');
 
     if (!supabaseReady) {
-      router.push('/dashboard');
+      router.push(redirectTo);
       return;
     }
 
@@ -58,7 +68,7 @@ export default function LoginPage() {
         localStorage.removeItem(PENDING_ACADEMY_KEY);
       }
 
-      router.push('/dashboard');
+      router.push(redirectTo);
     } catch {
       setError('로그인 중 오류가 발생했습니다.');
     } finally {
@@ -124,12 +134,14 @@ export default function LoginPage() {
                 )}
               </button>
 
-              <p className="text-center text-xs text-gray-400">
-                계정이 없으신가요?{' '}
+              <div className="flex items-center justify-between text-xs">
                 <Link href="/signup" className="text-primary-500 font-medium">
                   회원가입
                 </Link>
-              </p>
+                <Link href="/reset-password" className="text-gray-400 hover:text-gray-600">
+                  비밀번호 찾기
+                </Link>
+              </div>
 
               <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">
