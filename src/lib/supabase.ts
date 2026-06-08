@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 
 let _supabase: SupabaseClient | null = null;
 let _browserClient: SupabaseClient | null = null;
@@ -19,13 +20,10 @@ export function getBrowserClient() {
   if (!_browserClient) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-    _browserClient = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    });
+    // @supabase/ssr: 세션을 쿠키(sb-<ref>-auth-token)에 저장한다.
+    // proxy.ts(인증 가드)가 이 쿠키를 읽어 /dashboard 접근을 판단하므로,
+    // localStorage 기반 createClient를 쓰면 로그인 후에도 가드가 막아버린다.
+    _browserClient = createBrowserClient(supabaseUrl, supabaseAnonKey);
   }
   return _browserClient;
 }
