@@ -114,6 +114,14 @@ export interface UpdateAcademyRequest {
   kakao_channel_id?: string;
 }
 
+export interface CreateAcademyRequest {
+  name: string;
+  address?: string;
+  phone?: string;
+  description?: string;
+  owner_name?: string;
+}
+
 export interface CreateSubjectRequest {
   name: string;
   target_grade: string;

@@ -7,16 +7,21 @@ import {
   LayoutDashboard,
   MessageSquare,
   CalendarDays,
+  BookOpen,
+  Clock,
   Settings,
   LogOut,
   Menu,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAcademy } from '@/hooks/useAcademy';
 const navItems = [
   { label: '대시보드', href: '/dashboard', icon: LayoutDashboard },
   { label: '상담 내역', href: '/dashboard/inquiries', icon: MessageSquare },
   { label: '예약 관리', href: '/dashboard/reservations', icon: CalendarDays },
+  { label: '과목 관리', href: '/dashboard/subjects', icon: BookOpen },
+  { label: '시간표 관리', href: '/dashboard/schedule', icon: Clock },
   { label: '설정', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -24,20 +29,43 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const { academyName, isDemo } = useAcademy();
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (supabaseUrl && supabaseKey) {
+        const { getBrowserClient } = await import('@/lib/supabase');
+        const supabase = getBrowserClient();
+        await supabase.auth.signOut();
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+    localStorage.removeItem('academy_id');
     router.push('/login');
   }
 
   const navContent = (
     <>
-      <div className="h-16 flex items-center px-6 border-b border-gray-100">
-        <Link href="/dashboard" className="text-lg font-bold text-primary-500">
-          런플로우
+      <div className="h-16 flex items-center px-5 border-b border-gray-100">
+        <Link
+          href="/dashboard"
+          title="런플로우"
+          className="flex items-center gap-2.5 min-w-0"
+        >
+          {/* 런플로우 모노그램 마크 — 브랜드는 마크로 조용히, 메인은 학원명 */}
+          <span className="flex-shrink-0 w-9 h-9 rounded-[10px] bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-sm ring-1 ring-black/5">
+            <span className="text-white text-base font-extrabold leading-none">L</span>
+          </span>
+          <span className="block truncate text-[15px] font-bold text-gray-900 leading-tight">
+            {academyName || (isDemo ? '데모 학원' : '대시보드')}
+          </span>
         </Link>
       </div>
 
@@ -109,7 +137,7 @@ export default function Sidebar() {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-60 bg-white border-r border-gray-100 h-screen sticky top-0">
+      <aside className="hidden md:flex flex-col w-60 flex-shrink-0 bg-white border-r border-gray-100 h-screen sticky top-0">
         {navContent}
       </aside>
     </>

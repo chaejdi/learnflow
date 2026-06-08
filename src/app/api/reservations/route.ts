@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
+import { requireAuth, isAuthError } from '@/lib/auth';
+import { sendAlimtalk } from '@/lib/kakao';
 import type { CreateReservationRequest } from '@/types';
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const supabase = getServiceClient();
     const academyId = request.nextUrl.searchParams.get('academy_id');
@@ -27,6 +32,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const body = await request.json();
     const { id, status, notes } = body;
@@ -66,7 +74,14 @@ export async function PATCH(request: NextRequest) {
         .eq('id', reservation.trial_slots.id);
     }
 
-    // TODO: Send notification to academy owner when status changes
+    // 예약 확정 시 학부모에게 알림톡 발송
+    if (status === 'confirmed' && reservation?.parent_phone) {
+      const slot = reservation.trial_slots;
+      sendAlimtalk(reservation.parent_phone, 'reservation_confirmed', {
+        date: slot?.date || '',
+        time: slot?.time_start ? `${slot.time_start}~${slot.time_end}` : '',
+      }).catch(() => {}); // 알림톡 실패해도 API는 성공 처리
+    }
 
     return Response.json({ data: reservation });
   } catch (error) {

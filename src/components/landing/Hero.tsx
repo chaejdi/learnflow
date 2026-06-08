@@ -26,7 +26,7 @@ export default function Hero() {
             href="#pricing"
             className="inline-flex h-12 items-center px-8 rounded-lg bg-primary-500 text-white font-semibold text-base hover:bg-primary-600 transition-colors shadow-md"
           >
-            1개월 무료 체험 시작
+            14일 무료 체험 시작
           </a>
           <a
             href="#how-it-works"

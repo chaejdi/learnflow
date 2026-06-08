@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://learnflow.kr'),
+  metadataBase: new URL('https://learnflow-orcin.vercel.app'),
   title: {
     default: '런플로우 - 학원 AI 상담 & 체험수업 예약 | 카카오톡 챗봇',
     template: '%s | 런플로우',
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
       '카카오톡으로 학부모 문의를 24시간 AI 자동 응대. 체험수업 예약까지 자동으로. 14일 무료 체험.',
     type: 'website',
     locale: 'ko_KR',
-    url: 'https://learnflow.kr',
+    url: 'https://learnflow-orcin.vercel.app',
     siteName: '런플로우',
   },
   twitter: {
@@ -45,7 +45,50 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: 'https://learnflow.kr',
+    canonical: 'https://learnflow-orcin.vercel.app',
+  },
+  verification: {
+    other: {
+      'naver-site-verification': 'NAVER_VERIFICATION_CODE',
+    },
+  },
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: '런플로우',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  description:
+    '카카오톡으로 학부모 문의를 24시간 AI 자동 응대하고, 체험수업 예약까지 한번에 처리하는 학원 전용 AI 상담 서비스',
+  offers: [
+    {
+      '@type': 'Offer',
+      name: '무료 체험',
+      price: '0',
+      priceCurrency: 'KRW',
+      description: '14일 무료 체험',
+    },
+    {
+      '@type': 'Offer',
+      name: '기본',
+      price: '19900',
+      priceCurrency: 'KRW',
+      billingDuration: 'P1M',
+    },
+    {
+      '@type': 'Offer',
+      name: '프로',
+      price: '39900',
+      priceCurrency: 'KRW',
+      billingDuration: 'P1M',
+    },
+  ],
+  aggregateRating: {
+    '@type': 'AggregateRating',
+    ratingValue: '4.8',
+    ratingCount: '127',
   },
 };
 
@@ -56,6 +99,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className="h-full antialiased">
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

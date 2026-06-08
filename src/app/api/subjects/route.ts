@@ -1,8 +1,12 @@
 import { NextRequest } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
+import { requireAuth, isAuthError } from '@/lib/auth';
 import type { CreateSubjectRequest } from '@/types';
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const supabase = getServiceClient();
     const academyId = request.nextUrl.searchParams.get('academy_id');
@@ -27,6 +31,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const body: CreateSubjectRequest & { academy_id: string } =
       await request.json();
@@ -62,6 +69,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const body = await request.json();
     const { id, ...updates } = body;
@@ -89,6 +99,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (isAuthError(auth)) return auth;
+
   try {
     const id = request.nextUrl.searchParams.get('id');
 

@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+// [Claude] import Anthropic from '@anthropic-ai/sdk';
 import { getServiceClient } from '@/lib/supabase';
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
+import { generateAIResponse } from '@/lib/ai/client';
 import type { ChatRequest, ChatMessage, Academy, Subject } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -60,23 +61,15 @@ export async function POST(request: NextRequest) {
       { role: 'parent', content: message, timestamp: new Date().toISOString() },
     ];
 
-    const anthropic = new Anthropic();
+    // AI 응답 생성 (Gemini 또는 Claude — src/lib/ai/client.ts 에서 전환)
     const systemPrompt = buildSystemPrompt(academy, subjects || []);
-
-    const aiResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
-      system: systemPrompt,
-      messages: messages.map((m) => ({
+    const aiText = await generateAIResponse(
+      systemPrompt,
+      messages.map((m) => ({
         role: m.role === 'parent' ? ('user' as const) : ('assistant' as const),
         content: m.content,
-      })),
-    });
-
-    const aiText =
-      aiResponse.content[0].type === 'text'
-        ? aiResponse.content[0].text
-        : '답변을 생성하지 못했습니다.';
+      }))
+    );
 
     const needsEscalation =
       aiText.includes('원장님') && aiText.includes('안내드리겠습니다');
