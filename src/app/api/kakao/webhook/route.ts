@@ -55,6 +55,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 구독 상태 & 사용량 체크
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('*, plans(ai_chat_limit)')
+      .eq('academy_id', academy.id)
+      .single();
+
+    if (subscription) {
+      const isExpired = subscription.status === 'trialing'
+        && new Date(subscription.trial_ends_at) < new Date();
+      const isCancelled = subscription.status === 'cancelled' || subscription.status === 'expired';
+
+      if (isExpired || isCancelled) {
+        return Response.json(
+          buildKakaoTextResponse(
+            '현재 구독이 만료되었습니다. 원장님께서 런플로우 대시보드에서 플랜을 갱신해주시면 다시 상담이 가능합니다.'
+          )
+        );
+      }
+
+      const chatLimit = subscription.plans?.ai_chat_limit;
+      if (chatLimit) {
+        const now = new Date();
+        const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const { data: usage } = await supabase
+          .from('usage_logs')
+          .select('ai_chat_count')
+          .eq('academy_id', academy.id)
+          .eq('year_month', yearMonth)
+          .single();
+
+        if (usage && usage.ai_chat_count >= chatLimit) {
+          return Response.json(
+            buildKakaoTextResponse(
+              '이번 달 AI 상담 횟수가 모두 소진되었습니다. 원장님께서 플랜을 업그레이드하시면 더 많은 상담이 가능합니다. 직접 상담을 원하시면 잠시 기다려주세요!'
+            )
+          );
+        }
+      }
+    }
+
     // Get subjects
     const { data: subjects } = await supabase
       .from('subjects')
@@ -127,6 +168,17 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq('id', conversation.id);
+
+    // AI 상담 사용량 증가
+    // AI 상담 사용량 증가 (실패해도 응답에 영향 없도록)
+    try {
+      const now2 = new Date();
+      const ym = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, '0')}`;
+      await supabase.rpc('increment_usage', {
+        p_academy_id: academy.id,
+        p_year_month: ym,
+      });
+    } catch { /* ignore */ }
 
     return Response.json(buildKakaoTextResponse(aiText));
   } catch (error) {

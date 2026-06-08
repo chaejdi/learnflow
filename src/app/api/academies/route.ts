@@ -67,6 +67,15 @@ export async function POST(request: NextRequest) {
       .update({ academy_id: academy.id })
       .eq('id', auth.userId);
 
+    // 14일 무료체험 구독 자동 생성
+    await supabase
+      .from('subscriptions')
+      .insert({
+        academy_id: academy.id,
+        plan_id: 'trial',
+        status: 'trialing',
+      });
+
     return Response.json({ data: academy }, { status: 201 });
   } catch (error) {
     console.error('POST academy error:', error);

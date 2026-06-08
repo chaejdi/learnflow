@@ -13,6 +13,7 @@ function isSupabaseConfigured() {
 export function useAcademy() {
   const [academyId, setAcademyId] = useState<string>('');
   const [academyName, setAcademyName] = useState<string>('');
+  const [token, setToken] = useState<string>('');
   const [isDemo, setIsDemo] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -21,6 +22,16 @@ export function useAcademy() {
       setIsDemo(true);
       return '';
     }
+
+    // 세션 토큰 가져오기
+    try {
+      const { getBrowserClient } = await import('@/lib/supabase');
+      const supabase = getBrowserClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        setToken(session.access_token);
+      }
+    } catch { /* ignore */ }
 
     // 로그인한 원장님 본인의 학원만 조회 (owner_id = 로그인 유저)
     try {
@@ -46,5 +57,5 @@ export function useAcademy() {
     });
   }, [resolveAcademyId]);
 
-  return { academyId, academyName, isDemo, loading };
+  return { academyId, academyName, token, isDemo, loading };
 }
