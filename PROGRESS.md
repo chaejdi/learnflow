@@ -3,9 +3,21 @@
 > 마지막 업데이트: 2026-06-08 · 실제 코드 기준으로 작성됨
 > 제품 스펙은 [PROJECT_SPEC.md](./PROJECT_SPEC.md) 참고. (구버전 PROJECT_STATUS.md는 이 문서로 통합·삭제됨)
 
+## 📅 2026-06-08 세션 로그 (오늘 한 일)
+- 문서 통합(SSOT화), 마이그레이션 003~005 실 DB 적용 검증(전부 OK)
+- E2E 검증 + 하드닝: 비인증 API 401 반환(`requireAuth`)
+- middleware → proxy 마이그레이션(Next.js 16 deprecation 해소)
+- **로그인 후 대시보드 진입 불가** 수정 — `@supabase/ssr` 쿠키 세션(proxy가 쿠키 인식)
+- **카톡 AI 모델 교체**: Groq Llama → **Gemini 2.5 Flash** (한자 문제 해결, 한국어 품질↑)
+  - `thinkingBudget=0`으로 thinking 끔(빈 응답 버그 해결), 503 재시도
+- **상담내역 미저장 버그** 수정 — AI 실패가 대화 저장을 스킵하던 문제. `generateAIResponse`는 이제 throw 안 하고 안내문 반환 → 항상 저장
+- **프로덕션 배포 라이브**: https://learnflow-orcin.vercel.app (커밋 f4c3521~d2dea1e)
+
+---
+
 ## 프로젝트 개요
 - **서비스**: 런플로우 (LearnFlow) — AI 기반 학원 학부모 상담 자동화 플랫폼
-- **스택**: Next.js 16 + Supabase(PostgreSQL) + Claude API + 토스페이먼츠 + 카카오톡 연동
+- **스택**: Next.js 16 + Supabase(PostgreSQL) + **Gemini 2.5 Flash** + 토스페이먼츠 + 카카오톡 연동
 - **핵심 루프**: 학부모 카톡 문의 → AI 자동 응답 → 체험수업 예약 → 원장 대시보드 관리
 - **모델**: 학원별 구독 SaaS(멀티테넌트). 1계정 = 1학원(현재 1:1).
 
@@ -29,8 +41,9 @@
 - `useAcademy` 훅 — 내 학원 id/name/구독상태 제공
 
 ### 4. AI 챗봇
+- **모델: Gemini 2.5 Flash** (`src/lib/ai/client.ts`) — REST 직접 호출, `thinkingBudget=0`(추론 끔), 503/429 재시도. `generateAIResponse`는 throw 안 함(실패해도 안내문 반환 → 대화 항상 저장). Groq/Claude는 폴백 주석으로 보존. 환경변수 `GOOGLE_GEMINI_API_KEY`(로컬+Vercel 프로덕션 설정됨).
 - 카카오 웹훅(`/api/kakao/webhook`) — `payload.bot.id`로 `academies.kakao_channel_id` 매칭해 학원 식별 (위험한 "첫 학원" fallback 제거됨). 미연결 채널엔 봇 ID 안내 응답.
-- chat API(`/api/chat`) — 대화 이력 + Claude 호출
+- chat API(`/api/chat`) — 대화 이력 + AI 호출 (시뮬레이터가 사용하는 경로)
 - **AI 응답 커스터마이징** — 학원별 `ai_custom_prompt`(migration 005)로 시스템 프롬프트 조정
 - 시스템 프롬프트 생성(`src/lib/ai/system-prompt.ts`) — 학원 DB 정보 기반(hallucination 방지)
 
@@ -80,22 +93,23 @@
 
 ## 📋 남은 일 (TODO)
 
-### 🔴 1순위 — DB/검증 (지금 코드가 도는지)
-- [x] ~~마이그레이션 003~005 실제 DB 적용 여부 점검~~ → **2026-06-08 검증 완료, 전부 적용됨**
-- [ ] **E2E 검증** — 로그인 → 학원 격리 확인 → 결제 등록 → AI 응답까지 한 바퀴 (← 이제 여기가 1순위)
-- [ ] 짱짱맨 학원 시드(과목/시간표/샘플 대화)로 대시보드·전환율 채워보기
+### 🔴 내일(2026-06-09) 1순위 — 브라우저 직접 검증
+- [ ] **로그인 E2E 직접 확인** — 브라우저에서 `chaejdi2245@gmail.com` 로그인 → 대시보드 진입되는지(쿠키 세션 수정 후 첫 실사용 확인). 안 되면 F12→Application→"Clear site data" 후 재시도
+- [ ] **상담내역 저장 확인** — 시뮬레이터(`/simulator`)에서 대화 → 대시보드 상담내역에 뜨는지 (오늘 코드 수정은 검증됨, 실제 UI 확인만 남음)
+- [ ] 짱짱맨 학원 시드(시간표/샘플 대화)로 대시보드·전환율 화면 채워서 눈으로 점검
 
-### 🟡 2순위 — 하드닝
+### 🟡 2순위 — 하드닝 / 점검
 - [ ] conversations/reservations/subjects/trial-slots API 소유권 검사 일관성 점검
-- [x] ~~`requireAuth` — 토큰 없을 때 DEMO_USER 통과 부분 재검토~~ → **2026-06-08 수정: Supabase 설정 모드에선 토큰 없으면 401 반환. 데모 모드(미설정)는 그대로.**
+- [ ] 결제 카드 등록 E2E (토스 테스트키) → 구독 상태 변화 확인
 - [ ] RLS 정책 자체 점검(현재 service role로 우회 중)
 - [ ] 결제 실패/구독 만료(past_due, expired) 상태 처리 검증
+- [x] ~~`requireAuth` 401~~ / ~~로그인 쿠키 세션~~ / ~~Gemini 전환·상담저장~~ → **2026-06-08 완료**
 
 ### 🟢 3순위 — 프로덕션 외부 작업 (코드 밖, 사람이 직접)
-- [ ] 카카오 비즈니스 채널 등록 + 오픈빌더 스킬에 웹훅 URL 등록 + 봇 ID 입력
+- [ ] **실제 카카오톡 연동** — 비즈니스 채널 + 오픈빌더 웹훅 URL 등록 + 설정에 봇 ID 입력 (이게 돼야 실 카톡 메시지가 웹훅에 도달. 현재 `kakao_channel_id` 비어있어 실 카톡은 미연동)
 - [ ] 알림톡 메시지 템플릿 등록/**승인**(KAKAO_ADMIN_KEY, KAKAO_SENDER_KEY)
 - [ ] 토스페이먼츠 실 계약/라이브 키 발급
-- [ ] Vercel 배포 + 환경변수 세팅
+- [ ] Gemini 트래픽 늘면 빌링 활성화(무료 한도 분당10/일250 초과 대비)
 - [ ] 실제 학원 1곳 무료 적용 → 성과 데이터(응답시간, 예약 전환율) 수집
 
 ---
