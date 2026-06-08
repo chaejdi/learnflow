@@ -10,6 +10,7 @@ import {
   BookOpen,
   Clock,
   CreditCard,
+  TrendingUp,
   Settings,
   LogOut,
   Menu,
@@ -23,6 +24,7 @@ const navItems = [
   { label: '예약 관리', href: '/dashboard/reservations', icon: CalendarDays },
   { label: '과목 관리', href: '/dashboard/subjects', icon: BookOpen },
   { label: '시간표 관리', href: '/dashboard/schedule', icon: Clock },
+  { label: '전환율 분석', href: '/dashboard/analytics', icon: TrendingUp },
   { label: '결제 관리', href: '/dashboard/billing', icon: CreditCard },
   { label: '설정', href: '/dashboard/settings', icon: Settings },
 ];

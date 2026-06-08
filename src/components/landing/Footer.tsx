@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function Footer() {
   return (
     <footer className="py-12 px-4 bg-gray-900 text-gray-400">
@@ -53,8 +55,12 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-gray-800 mt-10 pt-6 text-xs text-gray-500">
-          &copy; 2026 런플로우. All rights reserved.
+        <div className="border-t border-gray-800 mt-10 pt-6 text-xs text-gray-500 flex flex-col sm:flex-row justify-between gap-2">
+          <span>&copy; 2026 런플로우. All rights reserved.</span>
+          <div className="flex gap-4">
+            <Link href="/terms" className="hover:text-gray-300 transition-colors">이용약관</Link>
+            <Link href="/privacy" className="hover:text-gray-300 transition-colors">개인정보처리방침</Link>
+          </div>
         </div>
       </div>
     </footer>

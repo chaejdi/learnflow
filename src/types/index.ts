@@ -8,6 +8,7 @@ export interface Academy {
   owner_id: string;
   kakao_channel_id: string | null;
   description: string | null;
+  ai_custom_prompt: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -112,6 +113,7 @@ export interface UpdateAcademyRequest {
   phone?: string;
   description?: string;
   kakao_channel_id?: string;
+  ai_custom_prompt?: string;
 }
 
 export interface CreateAcademyRequest {

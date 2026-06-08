@@ -11,6 +11,7 @@ interface AcademyForm {
   phone: string;
   description: string;
   kakao_channel_id: string;
+  ai_custom_prompt: string;
 }
 
 const defaultForm: AcademyForm = {
@@ -19,6 +20,7 @@ const defaultForm: AcademyForm = {
   phone: '02-1234-5678',
   description: '초등·중등 수학 전문 학원. 개별 맞춤 수업으로 아이의 수학 자신감을 키워드립니다.',
   kakao_channel_id: '',
+  ai_custom_prompt: '',
 };
 
 export default function SettingsPage() {
@@ -59,6 +61,7 @@ export default function SettingsPage() {
           phone: json.data.phone || '',
           description: json.data.description || '',
           kakao_channel_id: json.data.kakao_channel_id || '',
+          ai_custom_prompt: json.data.ai_custom_prompt || '',
         });
       }
     } catch (error) {
@@ -184,6 +187,23 @@ export default function SettingsPage() {
           <p className="text-xs text-gray-400 mt-1">
             이 학원의 카카오 채널을 식별하는 값입니다. 모르면 아래 웹훅 URL을 먼저 등록한 뒤,
             채널에 아무 메시지나 보내보세요. 봇이 자동으로 봇 ID를 알려줍니다.
+          </p>
+        </div>
+
+        <div className="border-t border-gray-100 pt-5">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            AI 응답 커스터마이징
+          </label>
+          <textarea
+            value={form.ai_custom_prompt}
+            onChange={(e) => setForm({ ...form, ai_custom_prompt: e.target.value })}
+            rows={5}
+            placeholder="예: 우리 학원은 칭찬을 많이 하는 스타일이에요. 체험수업 예약을 적극적으로 유도해주세요. 할인 이벤트: 이번 달 등록 시 10% 할인 안내해주세요."
+            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            AI 챗봇의 말투, 강조 포인트, 이벤트 안내 등을 자유롭게 지시할 수 있습니다.
+            여기에 입력한 내용이 AI 응답에 직접 반영됩니다.
           </p>
         </div>
 
