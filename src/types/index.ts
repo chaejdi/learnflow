@@ -37,6 +37,34 @@ export interface TrialSlot {
   created_at: string;
 }
 
+// 정규 시간표 운영 기간 (학기/방학 등)
+export interface ScheduleTerm {
+  id: string;
+  academy_id: string;
+  name: string;
+  start_date: string; // YYYY-MM-DD
+  end_date: string;   // YYYY-MM-DD
+  created_at?: string;
+  updated_at?: string;
+}
+
+// 정규 시간표 한 칸 (특정 주의 수업 occurrence)
+export interface ScheduleRow {
+  id: string;
+  academy_id: string;
+  term_id: string;
+  series_id: string | null; // 같은 반복 수업 묶음 (이후 모든 주 변경용)
+  week_start: string | null; // 이 수업이 속한 주의 월요일 (YYYY-MM-DD)
+  subject_id: string | null;
+  subject_name: string;
+  day_of_week: string; // '월'~'토'
+  time_start: string;
+  time_end: string;
+  teacher: string | null;
+  room: string | null;
+  color: string | null; // 색상 팔레트 키
+}
+
 export interface Reservation {
   id: string;
   trial_slot_id: string;
