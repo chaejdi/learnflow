@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAcademy } from '@/hooks/useAcademy';
 import { apiFetch } from '@/lib/api-client';
+import TimeSelect from '@/components/TimeSelect';
 import type { Subject, ScheduleTerm, ScheduleRow } from '@/types';
 
 // ===== 체험수업 슬롯 (DB 연동) =====
@@ -31,19 +32,25 @@ const DAY_COLORS: Record<string, string> = {
   '토': 'bg-yellow-100 text-yellow-700',
 };
 
-// 수업별 색상 팔레트 (Tailwind purge 대비 풀 클래스 문자열로 고정)
-const CLASS_COLORS: Record<string, { block: string; dot: string; label: string }> = {
-  blue:    { block: 'bg-blue-100 border-blue-300 text-blue-800',       dot: 'bg-blue-400',    label: '파랑' },
-  emerald: { block: 'bg-emerald-100 border-emerald-300 text-emerald-800', dot: 'bg-emerald-400', label: '초록' },
-  violet:  { block: 'bg-violet-100 border-violet-300 text-violet-800',  dot: 'bg-violet-400',  label: '보라' },
-  amber:   { block: 'bg-amber-100 border-amber-300 text-amber-900',     dot: 'bg-amber-400',   label: '노랑' },
-  rose:    { block: 'bg-rose-100 border-rose-300 text-rose-800',        dot: 'bg-rose-400',    label: '분홍' },
-  sky:     { block: 'bg-sky-100 border-sky-300 text-sky-800',           dot: 'bg-sky-400',     label: '하늘' },
-  orange:  { block: 'bg-orange-100 border-orange-300 text-orange-800',  dot: 'bg-orange-400',  label: '주황' },
-  slate:   { block: 'bg-slate-100 border-slate-300 text-slate-700',     dot: 'bg-slate-400',   label: '회색' },
+// 수업 색상: hex 값 저장. 프리셋 + 직접 선택(무제한).
+const COLOR_PRESETS = [
+  '#3b82f6', '#0ea5e9', '#06b6d4', '#14b8a6', '#10b981', '#84cc16',
+  '#eab308', '#f59e0b', '#f97316', '#ef4444', '#f43f5e', '#ec4899',
+  '#a855f7', '#8b5cf6', '#6366f1', '#64748b',
+];
+// 구버전 팔레트 키 → hex (기존 시드 데이터 호환)
+const LEGACY_COLOR_HEX: Record<string, string> = {
+  blue: '#3b82f6', emerald: '#10b981', violet: '#8b5cf6', amber: '#f59e0b',
+  rose: '#f43f5e', sky: '#0ea5e9', orange: '#f97316', slate: '#64748b',
 };
-const CLASS_COLOR_KEYS = Object.keys(CLASS_COLORS);
-const colorOf = (key: string | null) => CLASS_COLORS[key || 'blue'] || CLASS_COLORS.blue;
+function resolveColor(c: string | null): string {
+  if (!c) return '#3b82f6';
+  if (c.startsWith('#')) return c;
+  return LEGACY_COLOR_HEX[c] || '#3b82f6';
+}
+function blockStyle(hex: string): React.CSSProperties {
+  return { backgroundColor: hex + '1a', borderColor: hex, borderLeftWidth: 3, color: '#374151' };
+}
 
 // 시간표 세로 스케일 (분당 px)
 const PX_PER_MIN = 0.8;
@@ -173,7 +180,7 @@ interface TrialForm {
   time_end: string;
 }
 
-const emptySlotForm: SlotForm = { subject: '', day: '월', startTime: '15:00', endTime: '16:00', teacher: '', room: '', color: 'blue' };
+const emptySlotForm: SlotForm = { subject: '', day: '월', startTime: '15:00', endTime: '16:00', teacher: '', room: '', color: '#3b82f6' };
 const emptyTermForm: TermForm = { name: '', start_date: '', end_date: '' };
 const emptyTrialForm: TrialForm = { subject_id: '', date: '', time_start: '15:00', time_end: '16:00' };
 
@@ -283,6 +290,19 @@ export default function SchedulePage() {
     }
   }, [academyLoading, academyId, isDemo, fetchSubjects, fetchTerms, fetchTrialSlots]);
 
+  // ESC 키로 열려있는 팝업 닫기
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setShowSlotModal(false);
+        setShowTermModal(false);
+        setShowTrialModal(false);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // 달력 주 목록
   const weeks = useMemo(() => monthWeeks(viewYear, viewMonth), [viewYear, viewMonth]);
 
@@ -348,6 +368,10 @@ export default function SchedulePage() {
   async function handleSaveSlot(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedTerm) return;
+    if (slotForm.startTime >= slotForm.endTime) {
+      alert('종료 시간은 시작 시간보다 늦어야 합니다. 시간을 다시 확인해주세요.');
+      return;
+    }
     if (isDemo) {
       if (slotForm.id) {
         setSchedules((prev) => prev.map((s) => s.id === slotForm.id ? {
@@ -486,6 +510,10 @@ export default function SchedulePage() {
   // ===== 체험수업 슬롯 핸들러 =====
   async function handleAddTrialSlot(e: React.FormEvent) {
     e.preventDefault();
+    if (trialForm.time_start >= trialForm.time_end) {
+      alert('종료 시간은 시작 시간보다 늦어야 합니다. 시간을 다시 확인해주세요.');
+      return;
+    }
     if (isDemo) { setShowTrialModal(false); return; }
     try {
       setTrialSaving(true);
@@ -735,15 +763,16 @@ export default function SchedulePage() {
                           <div key={i} className="absolute left-0 right-0 border-t border-gray-50" style={{ top: i * 60 * PX_PER_MIN }} />
                         ))}
                         {dayEvents.map(({ ev, s, e2, col, cols }) => {
-                          const c = colorOf(ev.color);
+                          const hex = resolveColor(ev.color);
                           const h = (e2 - s) * PX_PER_MIN;
                           return (
                             <button
                               key={ev.id}
                               onClick={() => openEditSlot(ev)}
                               title="클릭하여 수정·삭제"
-                              className={`absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-95 transition ${c.block}`}
+                              className="absolute rounded-md border px-1.5 py-1 text-left overflow-hidden hover:brightness-95 transition"
                               style={{
+                                ...blockStyle(hex),
                                 top: (s - gridWindow.start) * PX_PER_MIN + 1,
                                 height: h - 2,
                                 left: `calc(${(col * 100) / cols}% + 1px)`,
@@ -788,7 +817,7 @@ export default function SchedulePage() {
                         <span className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold ${DAY_COLORS[slot.day_of_week]}`}>{slot.day_of_week}</span>
                         <div>
                           <p className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
-                            <span className={`w-2.5 h-2.5 rounded-full ${colorOf(slot.color).dot}`} />
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: resolveColor(slot.color) }} />
                             {slot.subject_name}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5 text-sm text-gray-500">
@@ -934,14 +963,14 @@ export default function SchedulePage() {
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">시작 시간</label>
-                  <input type="time" value={slotForm.startTime} onChange={(e) => setSlotForm({ ...slotForm, startTime: e.target.value })} className={inputClass} />
+                  <TimeSelect value={slotForm.startTime} onChange={(v) => setSlotForm({ ...slotForm, startTime: v })} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">종료 시간</label>
-                  <input type="time" value={slotForm.endTime} onChange={(e) => setSlotForm({ ...slotForm, endTime: e.target.value })} className={inputClass} />
+                  <TimeSelect value={slotForm.endTime} onChange={(v) => setSlotForm({ ...slotForm, endTime: v })} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -954,19 +983,31 @@ export default function SchedulePage() {
                   <input type="text" value={slotForm.room} onChange={(e) => setSlotForm({ ...slotForm, room: e.target.value })} placeholder="예: 1교실" className={inputClass} />
                 </div>
               </div>
-              {/* 색상 선택 */}
+              {/* 색상 선택 (프리셋 + 직접 선택) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">색상</label>
-                <div className="flex gap-2 flex-wrap">
-                  {CLASS_COLOR_KEYS.map((key) => (
+                <div className="flex gap-2 flex-wrap items-center">
+                  {COLOR_PRESETS.map((hex) => (
                     <button
-                      key={key}
+                      key={hex}
                       type="button"
-                      onClick={() => setSlotForm({ ...slotForm, color: key })}
-                      title={CLASS_COLORS[key].label}
-                      className={`w-8 h-8 rounded-full ${CLASS_COLORS[key].dot} transition-transform ${slotForm.color === key ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : 'hover:scale-105'}`}
+                      onClick={() => setSlotForm({ ...slotForm, color: hex })}
+                      title={hex}
+                      style={{ backgroundColor: hex }}
+                      className={`w-7 h-7 rounded-full transition-transform ${resolveColor(slotForm.color).toLowerCase() === hex ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : 'hover:scale-105'}`}
                     />
                   ))}
+                  {/* 직접 선택 */}
+                  <label className="flex items-center gap-1.5 h-7 px-2 rounded-full border border-gray-200 text-xs text-gray-600 cursor-pointer hover:bg-gray-50">
+                    <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: resolveColor(slotForm.color) }} />
+                    직접 선택
+                    <input
+                      type="color"
+                      value={resolveColor(slotForm.color)}
+                      onChange={(e) => setSlotForm({ ...slotForm, color: e.target.value })}
+                      className="w-0 h-0 opacity-0 absolute"
+                    />
+                  </label>
                 </div>
               </div>
               {/* 수정 범위 선택 (이후 주 occurrence가 있을 때만) */}
