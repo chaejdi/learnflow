@@ -2,13 +2,26 @@ import { NextRequest } from 'next/server';
 // [Claude] import Anthropic from '@anthropic-ai/sdk';
 import { getServiceClient } from '@/lib/supabase';
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
+import { getAvailabilityContext } from '@/lib/ai/context';
 import { generateAIResponse } from '@/lib/ai/client';
 import type { ChatRequest, ChatMessage, Academy, Subject } from '@/types';
 
 export async function POST(request: NextRequest) {
   try {
     const body: ChatRequest = await request.json();
-    const { academy_id, kakao_user_id, message } = body;
+    const { academy_id, kakao_user_id, message, intake } = body;
+
+    // 빈 문자열은 저장하지 않도록 정리
+    const cleanIntake = intake
+      ? {
+          parent_name: intake.parent_name?.trim() || null,
+          child_name: intake.child_name?.trim() || null,
+          relationship: intake.relationship?.trim() || null,
+          child_age: intake.child_age?.trim() || null,
+          inquiry_topic: intake.inquiry_topic?.trim() || null,
+          phone: intake.phone?.trim() || null,
+        }
+      : null;
 
     const supabase = getServiceClient();
 
@@ -46,10 +59,21 @@ export async function POST(request: NextRequest) {
           messages: [],
           status: 'active',
           needs_owner_reply: false,
+          ...(cleanIntake ?? {}),
         })
         .select()
         .single();
       conversation = newConv;
+    } else if (cleanIntake) {
+      // 기존 대화에 인테이크가 비어 있던 항목만 채운다(원장이 수정한 값은 덮어쓰지 않음).
+      const patch: Record<string, string> = {};
+      for (const [k, v] of Object.entries(cleanIntake)) {
+        if (v && !conversation[k]) patch[k] = v;
+      }
+      if (Object.keys(patch).length > 0) {
+        await supabase.from('conversations').update(patch).eq('id', conversation.id);
+        conversation = { ...conversation, ...patch };
+      }
     }
 
     if (!conversation) {
@@ -62,7 +86,8 @@ export async function POST(request: NextRequest) {
     ];
 
     // AI 응답 생성 (Gemini 또는 Claude — src/lib/ai/client.ts 에서 전환)
-    const systemPrompt = buildSystemPrompt(academy, subjects || []);
+    const availability = await getAvailabilityContext(supabase, academy_id);
+    const systemPrompt = buildSystemPrompt(academy, subjects || [], availability);
     const aiText = await generateAIResponse(
       systemPrompt,
       messages.map((m) => ({

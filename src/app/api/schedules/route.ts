@@ -52,17 +52,37 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ data });
 }
 
-// 수업 추가: 기간(term) 전체 주에 동일 수업을 깐다 (series_id 로 묶음)
+// 수업 추가:
+//   scope='term'(기본) — 기간 전체 주에 동일 수업을 깐다 (series_id 로 묶음)
+//   scope='one'         — 지정한 주(week_start)에만 1건 추가 (하루짜리 특강 등)
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { academy_id, term_id, subject_id, subject_name, day_of_week, time_start, time_end, teacher, room, color } = body;
+  const { academy_id, term_id, subject_id, subject_name, day_of_week, time_start, time_end, teacher, room, color, scope, week_start } = body;
 
   if (!academy_id || !term_id || !subject_name || !day_of_week || !time_start || !time_end) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
   const supabase = getServiceClient();
+  const seriesId = crypto.randomUUID();
 
+  // 이 주만 추가
+  if (scope === 'one') {
+    if (!week_start) {
+      return NextResponse.json({ error: 'week_start required for scope=one' }, { status: 400 });
+    }
+    const monday = ymd(mondayOf(parseYmd(week_start)));
+    const oneRow = {
+      academy_id, term_id, series_id: seriesId, week_start: monday,
+      subject_id: subject_id ?? null, subject_name, day_of_week, time_start, time_end,
+      teacher: teacher ?? null, room: room ?? null, color: color ?? 'blue',
+    };
+    const { data, error } = await supabase.from('schedules').insert([oneRow]).select();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data, count: data.length }, { status: 201 });
+  }
+
+  // 기간 전체에 추가 (기본)
   // 기간 날짜 범위 조회
   const { data: term, error: termErr } = await supabase
     .from('schedule_terms')
@@ -73,7 +93,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '기간을 찾을 수 없습니다.' }, { status: 400 });
   }
 
-  const seriesId = crypto.randomUUID();
   const weeks = mondaysInRange(term.start_date, term.end_date);
   const rows = weeks.map((week_start) => ({
     academy_id, term_id, series_id: seriesId, week_start,

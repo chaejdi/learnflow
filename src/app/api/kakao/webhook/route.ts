@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 // [Claude] import Anthropic from '@anthropic-ai/sdk';
 import { getServiceClient } from '@/lib/supabase';
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
+import { getAvailabilityContext } from '@/lib/ai/context';
 import { generateAIResponse } from '@/lib/ai/client';
 import { buildKakaoTextResponse } from '@/lib/kakao';
 import type { KakaoWebhookPayload, ChatMessage, Academy, Subject } from '@/types';
@@ -140,7 +141,8 @@ export async function POST(request: NextRequest) {
     ];
 
     // AI 응답 생성 (Gemini 또는 Claude — src/lib/ai/client.ts 에서 전환)
-    const systemPrompt = buildSystemPrompt(academy, subjects || []);
+    const availability = await getAvailabilityContext(supabase, academy.id);
+    const systemPrompt = buildSystemPrompt(academy, subjects || [], availability);
     const aiText = await generateAIResponse(
       systemPrompt,
       messages.map((m) => ({

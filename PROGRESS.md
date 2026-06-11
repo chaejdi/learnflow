@@ -1,11 +1,36 @@
 # LearnFlow 개발 진행 상황 (단일 진실 소스 / SSOT)
 
-> 마지막 업데이트: 2026-06-09 · 실제 코드 기준으로 작성됨
+> 마지막 업데이트: 2026-06-10 · 실제 코드 기준으로 작성됨
 > 제품 스펙은 [PROJECT_SPEC.md](./PROJECT_SPEC.md) 참고. (구버전 PROJECT_STATUS.md는 이 문서로 통합·삭제됨)
 >
 > **⚠️ 인프라 핵심 2가지 (꼭 기억)**
 > 1. **개발·운영이 같은 Supabase**(`lorpaqfwkatavuzxayan`)를 씀. dev/운영 DB 분리 안 됨 → 로컬에서 `supabase db push`·시드·삭제 돌리면 **운영에 즉시 반영**. 파괴적 작업 주의.
 > 2. **GitHub 푸시로 자동배포 안 됨.** 프로덕션 반영하려면 `vercel --prod --yes` 수동 실행 필요.
+
+## 📅 2026-06-11 세션 로그 (오늘 한 일)
+- **어제 만든 "카톡→예약" 파이프라인 검증 완료** (브라우저/HTTP 표면 직접 구동, 짱짱맨 학원 기준)
+  - **① 실명 표시 OK** — 시뮬레이터 사전양식 → conversations에 intake 저장 확인, `displayName`이 `성함(자녀이름)`/없으면 `학부모 XXXX` 렌더(코드+데이터 검증)
+  - **② AI 실제 일정 — 버그 발견 후 수정**: AI가 중등 심화를 "화·목 17:00~19:00"로 **날조**(실제 월·수 17:30~19:00). 원인은 `system-prompt.ts`의 "운영 과목" 블록에 남은 `subjects.schedule`(옛 freeform 시간)이 신규 materialized 시간표와 충돌 → 모델이 과목별 텍스트를 신뢰. **수정**: 과목 블록에서 시간 제거 + "정규 수업 시간표를 수업 시간의 유일 권위로" 명시 + 규칙4에 "이름만 보고 시간 추측 금지" 강화. **재검증**: 중등 심화 월·수 17:30~19:00, 고등 정규 화·목 19:00~21:00 모두 시간표 일치 확인
+  - **③ 원클릭 예약 OK** — `extract`(intake 우선 추출)→폼→`POST /api/reservations`(slot 자동생성)→예약관리 목록 노출까지 확인(테스트행 정리 완료)
+- **남은 비차단 결함**: extract가 명시 과목(중등 심화)을 `subject_name=null`로 놓침(프리필 약함) / `POST /api/reservations` 학원 소유권 검증 없음(2순위 하드닝)
+
+## 📅 2026-06-10 세션 로그 (오늘 한 일)
+- **브라우저 직접 검증 완료(이월 1순위)** — 로그인 E2E·시간표 화면·예약 화면 전부 눈으로 확인 OK
+  - 로그인: `Invalid Refresh Token` 콘솔 에러는 **이전 세션 낡은 쿠키 잔재**(비차단). 새로고침 시 로그인 유지+에러 없음 → 리프레시 토큰 정상 저장 확인. 코드 수정 불필요(거슬리면 Clear site data 1회)
+- **시간표 "이 주만 추가" 기능** (신규) — 수업 추가 시 기본은 기간 전체(매주), **"이 주만 추가" 버튼** 누르면 그 주에만 1건(특강·보강용). `POST /api/schedules`에 `scope='one'`+`week_start` 추가
+- **AI 응답 단락 정리** — 질문(`?`) 뒤 같은 줄에 문장이 붙던 문제. 프롬프트만으론 들쭉날쭉 → **서버 후처리 `formatParagraphs`로 강제**(물음표 뒤 단락 분리, 줄끝 공백·과한 줄바꿈 정리). 렌더링도 `whitespace-pre-wrap` 적용(시뮬레이터+문의내역)
+- **상담내역 401 버그 수정** — 문의 내역이 conversations를 **토큰 없는 plain `fetch`**로 불러 401(6/8 requireAuth 하드닝 때 누락). `apiFetch`로 교체(GET/POST/seed 3곳). billing 페이지들은 수동 Bearer라 정상
+- **상담자 실명 표시** (마이그레이션 008) — conversations에 `parent_name·child_name·relationship·child_age·inquiry_topic` 추가
+  - 시뮬레이터에 **상담 전 사전 양식**(성함·자녀이름·관계·나이·상담내용). 상담내용은 첫 메시지로 자동 전송. "양식 없이 바로 문의"도 가능
+  - 표시 규칙: **성함·자녀이름 둘 다 있으면 `성함(자녀이름)`, 아니면 기존 `학부모 XXXX`**(끝 4자리)
+  - 원장이 문의내역 상세 **연필 버튼**으로 이름·관계·나이·연락처 수정(`PATCH /api/conversations`, 소유권 검증). 비우면 익명으로 복귀
+- **카톡 상담 → 실제 예약 연결 파이프라인** (신규, 핵심)
+  - **① AI 실제 일정 반영**: `getAvailabilityContext`가 이번 주 정규 시간표+기존 체험예약을 AI 프롬프트에 주입. chat·웹훅 모두. "시간표 없는 시간 지어내지 말 것" 규칙. (검증: 실제 16:00~17:30 안내 확인)
+  - **② 전화번호 인테이크** (마이그레이션 009): conversations.phone + 사전양식/수정모달 필드
+  - **③ 예약정보 추출 API**: `POST /api/conversations/extract` — Gemini로 대화에서 자녀이름·전화·과목·희망날짜·시간 JSON 추출(인테이크 우선, 과목명→ID 매칭, 소유권 검증)
+  - **④ 원장 원클릭 예약 생성**: 문의내역 상세 "예약 생성" 버튼 → 추출+인테이크로 폼 프리필 → 원장 확인·수정 → `POST /api/reservations` → 예약 관리 등록
+- **발견·확인**: 카톡 예약이 예약관리에 안 들어가던 건 **예약 생성 코드가 원래 없었기 때문**(needs_reservation 플래그만 반환). 이름·전화는 대화 JSON에만 저장되던 것 → 위 파이프라인으로 해결
+- ⚠️ **오늘 작업 전부 미커밋** (14개 파일). 마이그레이션 008·009는 운영 DB에 이미 적용됨(`db push`)
 
 ## 📅 2026-06-09 세션 로그 (오늘 한 일)
 - **시간표 = 달력 + 기간(학기/방학) 단위로 개편** (신규 기능)
@@ -81,16 +106,19 @@
 - chat API(`/api/chat`) — 대화 이력 + AI 호출 (시뮬레이터가 사용하는 경로)
 - **AI 응답 커스터마이징** — 학원별 `ai_custom_prompt`(migration 005)로 시스템 프롬프트 조정
 - 시스템 프롬프트 생성(`src/lib/ai/system-prompt.ts`) — 학원 DB 정보 기반(hallucination 방지)
+- **실제 일정 반영**(2026-06-10) — `getAvailabilityContext`(`src/lib/ai/context.ts`)가 이번 주 정규 시간표+기존 체험예약을 프롬프트에 주입 → AI가 실제 빈 시간만 안내(지어내기 금지)
+- **응답 단락 정리**(2026-06-10) — `formatParagraphs`로 질문(`?`) 뒤 단락 강제 분리
+- **예약정보 추출**(2026-06-10) — `extractReservationInfo`(JSON 모드) + `POST /api/conversations/extract`로 대화에서 예약 정보 구조화
 
 ### 5. 대시보드
 - 메인(`/dashboard`) — 통계 4종(이번달 필터링) + 최근 문의
-- 문의 내역(`/dashboard/inquiries`) — 대화 목록 + 채팅 뷰 + 원장 직접 답변
-- 예약 관리(`/dashboard/reservations`) — 확정/취소
+- 문의 내역(`/dashboard/inquiries`) — 대화 목록 + 채팅 뷰 + 원장 직접 답변. **상담자 실명 표시**(`성함(자녀이름)`, 없으면 `학부모 XXXX`)·**이름 수정**·**원클릭 예약 생성**(2026-06-10)
+- 예약 관리(`/dashboard/reservations`) — 추가/수정/삭제·확정/취소·캘린더. 문의내역 "예약 생성"으로도 등록됨
 - 시간표(`/dashboard/schedule`) — 정규 시간표 DB 저장
 - 과목(`/dashboard/subjects`) — 과목 CRUD
 - 설정(`/dashboard/settings`) — 학원 정보 + 카카오 봇 ID + AI 커스텀 프롬프트
 - **전환율 분석(`/dashboard/analytics`)** — 월별 문의→예약 퍼널 시각화
-- 시뮬레이터(`/simulator`) — AI 응답 테스트 도구(`/api/academies/first` 의도적 사용)
+- 시뮬레이터(`/simulator`) — AI 응답 테스트 도구(`/api/academies/first` 의도적 사용) + **상담 전 사전 양식**(성함·자녀이름·관계·나이·연락처·상담내용, 2026-06-10)
 
 ### 6. 결제 / 구독 (토스페이먼츠)
 - 플랜: 무료체험(0, 14일)/기본(19,900, AI 200건)/프로(39,900, 무제한) — migration 004
@@ -122,6 +150,8 @@
 | `005_ai_custom_prompt.sql` | academies.ai_custom_prompt 컬럼 | ✅ 컬럼 확인됨 |
 | `006_schedule_terms.sql` | schedule_terms 테이블 + schedules.term_id | ✅ 2026-06-09 `db push` 적용 |
 | `007_schedule_weekly.sql` | schedules에 week_start·series_id·color | ✅ 2026-06-09 `db push` 적용 |
+| `008_conversation_intake.sql` | conversations에 parent_name·child_name·relationship·child_age·inquiry_topic | ✅ 2026-06-10 `db push` 적용 |
+| `009_conversation_phone.sql` | conversations에 phone | ✅ 2026-06-10 `db push` 적용 |
 
 > ⚠️ **이 DB는 운영도 같이 씀**(위 인프라 메모 참고). 마이그레이션·시드는 운영에 즉시 반영됨.
 > 006 적용 시 CLI 마이그레이션 히스토리 드리프트(`20240101…` 허위 버전)를 `migration repair`로 정리함.
@@ -133,27 +163,29 @@
 
 ## 📋 남은 일 (TODO)
 
-> **다음 세션 바로 시작점**: 오늘 시간표·예약 기능을 코드/API/빌드까지 검증했지만 **브라우저로 직접 눈으로 본 건 아직 없음**. 1순위는 화면 확인. (localhost:3000 dev 서버 + 프로덕션 둘 다 최신 코드 반영됨)
+> **다음 세션 바로 시작점**: ⚠️ 오늘 만든 것 **전부 미커밋(14파일)**. 먼저 ① 새 예약 파이프라인 브라우저 확인 → ② **커밋·푸시** → ③ `vercel --prod` 배포. dev 서버는 백그라운드로 떠 있음(localhost:3000).
 
-### 🔴 1순위 — 브라우저 직접 검증 (오늘 만든 것 + 이월분)
-- [ ] **시간표 화면 점검**(`/dashboard/schedule`) — ①월 달력에서 주 클릭 시 그 주 시간표 표시 ②7~8월 넘기면 여름방학으로 시간표 바뀌는지 ③블록이 시간만큼 세로로 차고 월 17:30 겹침 수업 나란히 ④수업 클릭→색상(직접 선택 포함) 수정, "이 주만/이후 전체" 동작 ⑤시간 드롭다운(오전/오후) ⑥연/월 이동 정상(2년 점프 없음)
-- [ ] **예약 화면 점검**(`/dashboard/reservations`) — ①"예약 추가"로 등록→목록에 뜨는지 ②연필로 수정/삭제 ③목록↔캘린더 토글, 캘린더에서 빈 날 클릭→추가·칩 클릭→수정
-- [ ] **로그인 E2E 직접 확인** — `chaejdi2245@gmail.com` 로그인 → 대시보드 진입(쿠키 세션 수정 후 첫 실사용). 안 되면 F12→Application→"Clear site data" 후 재시도
-- [ ] **상담내역 저장 확인** — 시뮬레이터(`/simulator`)에서 대화 → 대시보드 상담내역에 뜨는지 (코드 수정은 검증됨, UI 확인만 남음)
+### 🔴 1순위 — "카톡→예약" 파이프라인 검증 + 커밋/배포 → ✅ 2026-06-11 완료
+- [x] **사전 양식 + 실명 표시** — intake 저장 + `성함(자녀이름)`/`학부모 XXXX` 렌더 확인
+- [x] **AI 실제 일정 안내** — 버그(시간 날조) 발견→`system-prompt.ts` 수정→재검증 통과
+- [x] **원클릭 예약 생성** — extract→폼→`POST /api/reservations`→예약관리 등록 확인
+- [x] **커밋·푸시·배포** — 2026-06-11 진행
+- [ ] (후속) extract `subject_name` 추출 보강 — 명시 과목을 놓침(`extractReservationInfo` 프롬프트)
 
-### 🟠 1.5순위 — 인프라 정리 (오늘 발견, 실서비스 전 권장)
+### 🟠 1.5순위 — 인프라 정리 (실서비스 전 권장)
 - [ ] **dev/운영 Supabase 분리** — 현재 로컬·운영이 같은 DB. 개발용 Supabase 프로젝트 새로 만들고 `.env.local`만 거기로. (운영 시드·실험 격리)
 - [ ] **운영 DB 테스트 더미 정리** — `seedhist_%` 대화 89건, `reservations.notes='[seedhist]'` 백필, 짱짱맨 데모. 실서비스 시작 전 삭제 (마커로 깔끔히 제거 가능)
 - [ ] (선택) **Vercel↔GitHub 자동배포 연동** — 현재 푸시해도 자동배포 안 됨, `vercel --prod` 수동. 연동하면 푸시만으로 배포
 
 ### 🟡 2순위 — 하드닝 / 점검
-- [ ] `/api/schedules`에 소유권 검사 없음(requireAuth 미적용) — 다른 라우트와 일관성 맞추기
-- [ ] conversations/reservations/subjects/trial-slots API 소유권 검사 일관성 점검
+- [ ] `/api/schedules`에 소유권 검사 없음(requireAuth 미적용) — 다른 라우트와 일관성 맞추기 (오늘 scope='one' 추가했지만 인증은 여전히 없음)
+- [ ] conversations(GET/POST)·reservations·subjects·trial-slots API 소유권 검사 일관성 점검 (오늘 `PATCH /api/conversations`·`/api/conversations/extract`엔 owner_id 검증 추가함 — 나머지도 맞추기)
 - [ ] 결제 카드 등록 E2E (토스 테스트키) → 구독 상태 변화 확인
 - [ ] RLS 정책 자체 점검(현재 service role로 우회 중)
 - [ ] 결제 실패/구독 만료(past_due, expired) 상태 처리 검증
 - [x] ~~`requireAuth` 401~~ / ~~로그인 쿠키 세션~~ / ~~Gemini 전환·상담저장~~ → **2026-06-08 완료**
-- [x] ~~짱짱맨 시드로 대시보드·전환율 채우기~~ / ~~시간표 달력·주단위 개편~~ / ~~예약 추가수정삭제·캘린더~~ → **2026-06-09 완료**(브라우저 점검만 남음)
+- [x] ~~짱짱맨 시드~~ / ~~시간표 달력·주단위 개편~~ / ~~예약 추가수정삭제·캘린더~~ → **2026-06-09 완료**
+- [x] ~~로그인·시간표·예약 브라우저 검증~~ / ~~상담내역 401 수정~~ / ~~시간표 '이 주만' 추가~~ / ~~AI 단락 정리~~ / ~~상담자 실명 표시~~ / ~~카톡→예약 파이프라인(AI 일정·추출·원클릭)~~ → **2026-06-10 완료**(새 파이프라인 브라우저 점검·커밋만 남음)
 
 ### 🟢 3순위 — 프로덕션 외부 작업 (코드 밖, 사람이 직접)
 - [ ] **실제 카카오톡 연동** — 비즈니스 채널 + 오픈빌더 웹훅 URL 등록 + 설정에 봇 ID 입력 (이게 돼야 실 카톡 메시지가 웹훅에 도달. 현재 `kakao_channel_id` 비어있어 실 카톡은 미연동)

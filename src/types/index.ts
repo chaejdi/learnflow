@@ -89,6 +89,13 @@ export interface Conversation {
   reservation_id: string | null;
   status: ConversationStatus;
   needs_owner_reply: boolean;
+  // 상담 사전 양식(인테이크) — 없으면 null/미존재
+  parent_name?: string | null;
+  child_name?: string | null;
+  relationship?: string | null;
+  child_age?: string | null;
+  inquiry_topic?: string | null;
+  phone?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +126,15 @@ export interface ChatRequest {
   academy_id: string;
   kakao_user_id: string;
   message: string;
+  // 상담 사전 양식(인테이크) — 첫 메시지에만 함께 전송. 선택.
+  intake?: {
+    parent_name?: string;
+    child_name?: string;
+    relationship?: string;
+    child_age?: string;
+    inquiry_topic?: string;
+    phone?: string;
+  };
 }
 
 export interface ChatResponse {

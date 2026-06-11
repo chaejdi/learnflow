@@ -213,6 +213,7 @@ export default function SchedulePage() {
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [slotForm, setSlotForm] = useState<SlotForm>(emptySlotForm);
   const [editScope, setEditScope] = useState<'one' | 'future'>('one');
+  const [addScope, setAddScope] = useState<'term' | 'one'>('term'); // 새 수업 추가 범위: 기간 전체 / 이 주만
   const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
 
   const [showTermModal, setShowTermModal] = useState(false);
@@ -348,6 +349,7 @@ export default function SchedulePage() {
   function openNewSlot() {
     setSlotForm(emptySlotForm);
     setEditScope('one');
+    setAddScope('term');
     setShowSlotModal(true);
   }
   function openEditSlot(s: ScheduleRow) {
@@ -382,7 +384,7 @@ export default function SchedulePage() {
       } else {
         setSchedules((prev) => [...prev, {
           id: Date.now().toString(), academy_id: 'demo', term_id: selectedTerm.id, series_id: Date.now().toString(),
-          week_start: null, subject_id: null,
+          week_start: addScope === 'one' ? activeWeek : null, subject_id: null,
           subject_name: slotForm.subject, day_of_week: slotForm.day,
           time_start: slotForm.startTime + ':00', time_end: slotForm.endTime + ':00',
           teacher: slotForm.teacher, room: slotForm.room, color: slotForm.color,
@@ -413,6 +415,8 @@ export default function SchedulePage() {
             body: JSON.stringify({
               academy_id: academyId,
               term_id: selectedTerm.id,
+              scope: addScope,
+              week_start: addScope === 'one' ? activeWeek : undefined,
               subject_name: slotForm.subject,
               day_of_week: slotForm.day,
               time_start: slotForm.startTime,
@@ -944,7 +948,9 @@ export default function SchedulePage() {
               <p className="text-xs text-gray-400 mb-4">
                 {slotForm.id
                   ? `${selectedTerm.name} · ${weekLabel(parseYmd(activeWeek))} 수업 수정`
-                  : `${selectedTerm.name} 기간 전체(매주)에 추가됩니다`}
+                  : addScope === 'one'
+                    ? `${selectedTerm.name} · ${weekLabel(parseYmd(activeWeek))} 그 주에만 추가됩니다`
+                    : `${selectedTerm.name} 기간 전체(매주)에 추가됩니다`}
               </p>
             )}
             <form onSubmit={handleSaveSlot} className="space-y-4">
@@ -1010,6 +1016,24 @@ export default function SchedulePage() {
                   </label>
                 </div>
               </div>
+              {/* 추가 범위 (새 수업일 때만) — 기본은 기간 전체, 버튼 누르면 이 주만 */}
+              {!slotForm.id && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">추가 범위</label>
+                  <button
+                    type="button"
+                    onClick={() => setAddScope(addScope === 'one' ? 'term' : 'one')}
+                    className={`w-full py-2 rounded-lg border text-sm font-medium transition-colors ${addScope === 'one' ? 'bg-primary-500 border-primary-500 text-white' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    {addScope === 'one' ? '✓ 이 주만 추가' : '이 주만 추가'}
+                  </button>
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    {addScope === 'one'
+                      ? `특강·보강처럼 ${weekLabel(parseYmd(activeWeek))} 한 주에만 들어갑니다.`
+                      : '기본은 기간 전체(매주)에 추가됩니다. 한 주만 넣으려면 위 버튼을 누르세요.'}
+                  </p>
+                </div>
+              )}
               {/* 수정 범위 선택 (이후 주 occurrence가 있을 때만) */}
               {slotForm.id && editingHasFuture && (
                 <div>
