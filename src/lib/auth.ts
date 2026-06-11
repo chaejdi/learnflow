@@ -59,3 +59,30 @@ export async function requireAuth(
 export function isAuthError(result: AuthResult | Response): result is Response {
   return result instanceof Response;
 }
+
+/**
+ * 마스터(관리자) 권한 검증 — 로그인 + users.role='admin' 확인.
+ * 런플로우 운영자 본인 계정만 전체 학원(고객사) 데이터에 접근할 수 있다.
+ */
+export async function requireMaster(
+  request: NextRequest
+): Promise<AuthResult | Response> {
+  const auth = await requireAuth(request);
+  if (isAuthError(auth)) return auth;
+
+  const { getServiceClient } = await import('@/lib/supabase');
+  const supabase = getServiceClient();
+  const { data } = await supabase
+    .from('users')
+    .select('role')
+    .eq('id', auth.userId)
+    .single();
+
+  if (!data || data.role !== 'admin') {
+    return Response.json(
+      { error: '관리자 권한이 필요합니다.' },
+      { status: 403 }
+    );
+  }
+  return auth;
+}

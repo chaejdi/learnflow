@@ -15,9 +15,11 @@ import {
   LogOut,
   Menu,
   X,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAcademy } from '@/hooks/useAcademy';
+import { apiFetch } from '@/lib/api-client';
 const navItems = [
   { label: '대시보드', href: '/dashboard', icon: LayoutDashboard },
   { label: '상담 내역', href: '/dashboard/inquiries', icon: MessageSquare },
@@ -33,11 +35,19 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [isMaster, setIsMaster] = useState(false);
   const { academyName, isDemo } = useAcademy();
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    apiFetch('/api/admin/check')
+      .then((r) => r.json())
+      .then((j) => setIsMaster(!!j.isMaster))
+      .catch(() => {});
+  }, []);
 
   async function handleLogout() {
     try {
@@ -95,6 +105,21 @@ export default function Sidebar() {
             </Link>
           );
         })}
+
+        {isMaster && (
+          <Link
+            href="/admin"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mt-1',
+              pathname.startsWith('/admin')
+                ? 'bg-primary-50 text-primary-600'
+                : 'text-primary-600/80 hover:bg-primary-50/60'
+            )}
+          >
+            <Shield size={20} />
+            관리자
+          </Link>
+        )}
       </nav>
 
       <div className="px-3 py-4 border-t border-gray-100">
