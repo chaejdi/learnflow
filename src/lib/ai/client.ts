@@ -135,8 +135,9 @@ export async function extractReservationInfo(
 
   const sys = `너는 학원 상담 대화에서 "체험수업 예약 정보"를 추출하는 도구다.
 오늘 날짜는 ${todayStr} 이다. "내일/모레/이번 주 토요일" 같은 표현은 이 날짜를 기준으로 YYYY-MM-DD 로 환산하라.
-등록된 과목 목록: ${subjectNames.length ? subjectNames.join(', ') : '(없음)'}. subject_name 은 가능하면 이 목록 중 하나로 맞춰라.
-대화에 명시되지 않은 값은 반드시 null 로 둬라. 추측하지 마라.
+등록된 과목 목록: ${subjectNames.length ? subjectNames.join(', ') : '(없음)'}.
+subject_name 은 학부모가 관심을 보이거나 언급한 과목이 위 목록에 있으면, 예약이 아직 확정되지 않았더라도 그 과목명으로 채워라(목록의 정확한 이름으로 맞춤). 여러 개면 가장 최근에 언급한 것을 고른다.
+나머지 값(parent_name·child_name·phone·preferred_date·preferred_time)은 대화에 명시되지 않았으면 반드시 null 로 둬라. 추측하지 마라.
 오직 아래 형식의 JSON 만 출력하라(설명·마크다운 금지):
 {"parent_name":string|null,"child_name":string|null,"phone":string|null,"subject_name":string|null,"preferred_date":string|null,"preferred_time":string|null}`;
 
@@ -158,15 +159,24 @@ export async function extractReservationInfo(
   };
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return EMPTY_EXTRACTION;
-    const data = await res.json();
-    const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const text = parts.map((p: { text?: string }) => p.text ?? '').join('').trim();
+    // 503/429(과부하·레이트리밋)는 일시적이므로 짧게 재시도(채팅 callGemini와 동일)
+    let text = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 503 || res.status === 429) {
+        await sleep(800 * (attempt + 1)); // 0.8s, 1.6s 백오프
+        continue;
+      }
+      if (!res.ok) return EMPTY_EXTRACTION;
+      const data = await res.json();
+      const parts = data?.candidates?.[0]?.content?.parts ?? [];
+      text = parts.map((p: { text?: string }) => p.text ?? '').join('').trim();
+      break;
+    }
     if (!text) return EMPTY_EXTRACTION;
     const parsed = JSON.parse(text);
     return {

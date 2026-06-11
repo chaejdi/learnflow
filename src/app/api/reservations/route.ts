@@ -1,8 +1,38 @@
 import { NextRequest } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase';
 import { requireAuth, isAuthError } from '@/lib/auth';
 import { sendAlimtalk } from '@/lib/kakao';
 import type { CreateReservationRequest } from '@/types';
+
+// 학원이 로그인한 원장 소유인지 확인
+async function ownsAcademy(
+  supabase: SupabaseClient,
+  academyId: string,
+  userId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('academies')
+    .select('owner_id')
+    .eq('id', academyId)
+    .single();
+  return !!data && data.owner_id === userId;
+}
+
+// 예약 + 소속 학원 owner_id 조회(소유권 검증용)
+async function getReservationWithOwner(
+  supabase: SupabaseClient,
+  reservationId: string
+): Promise<{ trial_slot_id: string | null; ownerId: string } | null> {
+  const { data } = await supabase
+    .from('reservations')
+    .select('trial_slot_id, academies!inner(owner_id)')
+    .eq('id', reservationId)
+    .single();
+  if (!data) return null;
+  const ownerId = (data.academies as unknown as { owner_id: string }).owner_id;
+  return { trial_slot_id: data.trial_slot_id as string | null, ownerId };
+}
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -14,6 +44,10 @@ export async function GET(request: NextRequest) {
 
     if (!academyId) {
       return Response.json({ error: 'academy_id required' }, { status: 400 });
+    }
+
+    if (!(await ownsAcademy(supabase, academyId, auth.userId))) {
+      return Response.json({ error: '권한이 없습니다.' }, { status: 403 });
     }
 
     const { data, error } = await supabase
@@ -52,6 +86,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = getServiceClient();
+
+    const owned = await getReservationWithOwner(supabase, id);
+    if (!owned) {
+      return Response.json({ error: '예약을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    if (owned.ownerId !== auth.userId) {
+      return Response.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (status !== undefined) updates.status = status;
@@ -116,6 +158,10 @@ export async function POST(request: NextRequest) {
     } = await request.json();
 
     const supabase = getServiceClient();
+
+    if (!body.academy_id || !(await ownsAcademy(supabase, body.academy_id, auth.userId))) {
+      return Response.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
 
     let trialSlotId = body.trial_slot_id;
 
@@ -184,18 +230,20 @@ export async function DELETE(request: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // 연결된 체험슬롯도 함께 정리 (수동 등록분)
-    const { data: resv } = await supabase
-      .from('reservations')
-      .select('trial_slot_id')
-      .eq('id', id)
-      .single();
+    // 소유권 검증 + 연결된 체험슬롯 정리용 trial_slot_id 조회
+    const owned = await getReservationWithOwner(supabase, id);
+    if (!owned) {
+      return Response.json({ error: '예약을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    if (owned.ownerId !== auth.userId) {
+      return Response.json({ error: '권한이 없습니다.' }, { status: 403 });
+    }
 
     const { error } = await supabase.from('reservations').delete().eq('id', id);
     if (error) throw error;
 
-    if (resv?.trial_slot_id) {
-      await supabase.from('trial_slots').delete().eq('id', resv.trial_slot_id);
+    if (owned.trial_slot_id) {
+      await supabase.from('trial_slots').delete().eq('id', owned.trial_slot_id);
     }
 
     return Response.json({ success: true });

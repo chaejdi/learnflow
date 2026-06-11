@@ -12,7 +12,10 @@
   - **① 실명 표시 OK** — 시뮬레이터 사전양식 → conversations에 intake 저장 확인, `displayName`이 `성함(자녀이름)`/없으면 `학부모 XXXX` 렌더(코드+데이터 검증)
   - **② AI 실제 일정 — 버그 발견 후 수정**: AI가 중등 심화를 "화·목 17:00~19:00"로 **날조**(실제 월·수 17:30~19:00). 원인은 `system-prompt.ts`의 "운영 과목" 블록에 남은 `subjects.schedule`(옛 freeform 시간)이 신규 materialized 시간표와 충돌 → 모델이 과목별 텍스트를 신뢰. **수정**: 과목 블록에서 시간 제거 + "정규 수업 시간표를 수업 시간의 유일 권위로" 명시 + 규칙4에 "이름만 보고 시간 추측 금지" 강화. **재검증**: 중등 심화 월·수 17:30~19:00, 고등 정규 화·목 19:00~21:00 모두 시간표 일치 확인
   - **③ 원클릭 예약 OK** — `extract`(intake 우선 추출)→폼→`POST /api/reservations`(slot 자동생성)→예약관리 목록 노출까지 확인(테스트행 정리 완료)
-- **남은 비차단 결함**: extract가 명시 과목(중등 심화)을 `subject_name=null`로 놓침(프리필 약함) / `POST /api/reservations` 학원 소유권 검증 없음(2순위 하드닝)
+- **후속 결함 2건 수정 완료**:
+  - **#2 예약 API 멀티테넌트 격리**: `/api/reservations` GET/POST/PATCH/DELETE에 학원 소유권 검증 추가(`ownsAcademy`/`getReservationWithOwner`). 임시 2번째 원장·학원·예약을 만들어 교차 테넌트 GET/POST/PATCH/DELETE 전부 **403**, 없는 예약 **404**, 본인 학원은 201/200/success 확인 후 정리
+  - **#1 extract 과목 추출 보강**: 학부모가 언급·관심 보인 과목이면 예약 미확정이라도 `subject_name` 채우도록 프롬프트 수정. 엔드포인트 e2e로 `중등 수학 심화`+subject_id 매칭 확인
+  - **추가**: `extractReservationInfo`가 429/503을 조용히 삼키고 전부 null 반환하던 것 → 채팅과 동일한 재시도(0.8/1.6s 백오프) 추가. (검증 중 Gemini 무료 분당쿼터 초과로 발견 — 실서비스 빌링 활성화 권장)
 
 ## 📅 2026-06-10 세션 로그 (오늘 한 일)
 - **브라우저 직접 검증 완료(이월 1순위)** — 로그인 E2E·시간표 화면·예약 화면 전부 눈으로 확인 OK
@@ -170,7 +173,7 @@
 - [x] **AI 실제 일정 안내** — 버그(시간 날조) 발견→`system-prompt.ts` 수정→재검증 통과
 - [x] **원클릭 예약 생성** — extract→폼→`POST /api/reservations`→예약관리 등록 확인
 - [x] **커밋·푸시·배포** — 2026-06-11 진행
-- [ ] (후속) extract `subject_name` 추출 보강 — 명시 과목을 놓침(`extractReservationInfo` 프롬프트)
+- [x] (후속) extract `subject_name` 추출 보강 + `/api/reservations` 소유권 검증(#1·#2) — 2026-06-11 완료
 
 ### 🟠 1.5순위 — 인프라 정리 (실서비스 전 권장)
 - [ ] **dev/운영 Supabase 분리** — 현재 로컬·운영이 같은 DB. 개발용 Supabase 프로젝트 새로 만들고 `.env.local`만 거기로. (운영 시드·실험 격리)
