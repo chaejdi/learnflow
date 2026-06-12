@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Loader2, TrendingUp, ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react';
 import { useAcademy } from '@/hooks/useAcademy';
 import { apiFetch } from '@/lib/api-client';
@@ -13,10 +14,18 @@ interface MonthlyData {
 }
 
 export default function AnalyticsPage() {
-  const { academyId, isDemo, loading: academyLoading } = useAcademy();
+  const router = useRouter();
+  const { academyId, isDemo, role, loading: academyLoading } = useAcademy();
   const [loading, setLoading] = useState(true);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [summary, setSummary] = useState({ total: 0, converted: 0, rate: 0 });
+
+  // 전환율 분석은 원장(owner) 전용 — 선생님(staff)은 대시보드로
+  useEffect(() => {
+    if (!academyLoading && role === 'staff') {
+      router.replace('/dashboard');
+    }
+  }, [academyLoading, role, router]);
 
   const fetchData = useCallback(async () => {
     if (isDemo) {
@@ -90,7 +99,7 @@ export default function AnalyticsPage() {
     if (!academyLoading) fetchData();
   }, [academyLoading, fetchData]);
 
-  if (loading || academyLoading) {
+  if (loading || academyLoading || role === 'staff') {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 size={28} className="animate-spin text-gray-300" />

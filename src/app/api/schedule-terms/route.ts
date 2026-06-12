@@ -1,18 +1,32 @@
 import { NextRequest } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { requireMember, isAuthError } from '@/lib/auth';
+
+// 기간이 속한 학원 id 조회(멤버십 검증용)
+async function getTermAcademy(
+  supabase: SupabaseClient,
+  termId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('schedule_terms')
+    .select('academy_id')
+    .eq('id', termId)
+    .single();
+  return (data?.academy_id as string) ?? null;
+}
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
+  const academyId = request.nextUrl.searchParams.get('academy_id');
+  if (!academyId) {
+    return Response.json({ error: 'academy_id required' }, { status: 400 });
+  }
+
+  const m = await requireMember(request, academyId);
+  if (isAuthError(m)) return m;
 
   try {
     const supabase = getServiceClient();
-    const academyId = request.nextUrl.searchParams.get('academy_id');
-
-    if (!academyId) {
-      return Response.json({ error: 'academy_id required' }, { status: 400 });
-    }
 
     const { data, error } = await supabase
       .from('schedule_terms')
@@ -30,9 +44,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const body = await request.json();
     const { academy_id, name, start_date, end_date } = body;
@@ -46,6 +57,9 @@ export async function POST(request: NextRequest) {
     if (start_date > end_date) {
       return Response.json({ error: '시작일이 종료일보다 늦을 수 없습니다.' }, { status: 400 });
     }
+
+    const m = await requireMember(request, academy_id);
+    if (isAuthError(m)) return m;
 
     const supabase = getServiceClient();
     const { data, error } = await supabase
@@ -64,9 +78,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const body = await request.json();
     const { id, name, start_date, end_date } = body;
@@ -79,6 +90,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     const supabase = getServiceClient();
+
+    const academyId = await getTermAcademy(supabase, id);
+    if (!academyId) {
+      return Response.json({ error: '기간을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const m = await requireMember(request, academyId);
+    if (isAuthError(m)) return m;
+
     const { data, error } = await supabase
       .from('schedule_terms')
       .update({
@@ -101,9 +120,6 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const id = request.nextUrl.searchParams.get('id');
     if (!id) {
@@ -111,6 +127,14 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = getServiceClient();
+
+    const academyId = await getTermAcademy(supabase, id);
+    if (!academyId) {
+      return Response.json({ error: '기간을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const m = await requireMember(request, academyId);
+    if (isAuthError(m)) return m;
+
     // schedules.term_id 는 on delete cascade 이므로 해당 기간의 시간표도 함께 삭제됨
     const { error } = await supabase.from('schedule_terms').delete().eq('id', id);
 

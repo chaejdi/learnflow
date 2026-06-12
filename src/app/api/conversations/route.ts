@@ -1,18 +1,18 @@
 import { NextRequest } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { requireMember, isAuthError } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
+  const academyId = request.nextUrl.searchParams.get('academy_id');
+  if (!academyId) {
+    return Response.json({ error: 'academy_id required' }, { status: 400 });
+  }
+
+  const m = await requireMember(request, academyId);
+  if (isAuthError(m)) return m;
 
   try {
     const supabase = getServiceClient();
-    const academyId = request.nextUrl.searchParams.get('academy_id');
-
-    if (!academyId) {
-      return Response.json({ error: 'academy_id required' }, { status: 400 });
-    }
 
     const { data, error } = await supabase
       .from('conversations')
@@ -29,11 +29,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 원장님이 직접 답변 보내기
+// 원장/선생님이 직접 답변 보내기
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const { conversation_id, message } = await request.json();
 
@@ -55,6 +52,9 @@ export async function POST(request: NextRequest) {
     if (fetchError || !conversation) {
       return Response.json({ error: '대화를 찾을 수 없습니다.' }, { status: 404 });
     }
+
+    const m = await requireMember(request, conversation.academy_id);
+    if (isAuthError(m)) return m;
 
     const updatedMessages = [
       ...conversation.messages,
@@ -82,11 +82,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 원장님이 상담 인테이크(이름 등)를 수정
+// 원장/선생님이 상담 인테이크(이름 등)를 수정
 export async function PATCH(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const body = await request.json();
     const { conversation_id, parent_name, child_name, relationship, child_age, inquiry_topic, phone } = body;
@@ -97,20 +94,18 @@ export async function PATCH(request: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // 소유권 검증: 대화가 속한 학원의 owner_id 가 로그인 유저인지 확인
+    // 멤버십 검증: 대화가 속한 학원의 멤버인지 확인
     const { data: conversation, error: fetchError } = await supabase
       .from('conversations')
-      .select('id, academy_id, academies!inner(owner_id)')
+      .select('id, academy_id')
       .eq('id', conversation_id)
       .single();
 
     if (fetchError || !conversation) {
       return Response.json({ error: '대화를 찾을 수 없습니다.' }, { status: 404 });
     }
-    const ownerId = (conversation.academies as unknown as { owner_id: string }).owner_id;
-    if (ownerId !== auth.userId) {
-      return Response.json({ error: '권한이 없습니다.' }, { status: 403 });
-    }
+    const m = await requireMember(request, conversation.academy_id);
+    if (isAuthError(m)) return m;
 
     // 전달된 필드만 갱신(빈 문자열은 null 로 저장 → 익명 표시로 되돌릴 수 있음)
     const norm = (v: unknown) => (typeof v === 'string' ? v.trim() || null : undefined);

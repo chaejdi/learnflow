@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAcademy } from '@/hooks/useAcademy';
 
 interface Plan {
@@ -40,11 +41,19 @@ const PLANS: Plan[] = [
 ];
 
 export default function BillingPage() {
-  const { academyId, token } = useAcademy();
+  const router = useRouter();
+  const { academyId, token, role, loading: academyLoading } = useAcademy();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [usage, setUsage] = useState<{ ai_chat_count: number }>({ ai_chat_count: 0 });
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 결제 관리는 원장(owner) 전용 — 선생님(staff)은 대시보드로
+  useEffect(() => {
+    if (!academyLoading && role === 'staff') {
+      router.replace('/dashboard');
+    }
+  }, [academyLoading, role, router]);
 
   const fetchBilling = useCallback(async () => {
     if (!token) return;
@@ -101,7 +110,7 @@ export default function BillingPage() {
     window.location.href = `/dashboard/billing/register?customerKey=${customerKey}`;
   };
 
-  if (loading) {
+  if (loading || academyLoading || role === 'staff') {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />

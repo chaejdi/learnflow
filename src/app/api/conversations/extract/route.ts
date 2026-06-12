@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getServiceClient } from '@/lib/supabase';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { requireMember, isAuthError } from '@/lib/auth';
 import { extractReservationInfo } from '@/lib/ai/client';
 import type { ChatMessage } from '@/types';
 
@@ -12,11 +12,8 @@ function todayStr(): string {
   return `${y}-${m}-${d}`;
 }
 
-// 대화에서 체험수업 예약 정보를 추출(원장의 원클릭 예약 생성 프리필용)
+// 대화에서 체험수업 예약 정보를 추출(원장/선생님의 원클릭 예약 생성 프리필용)
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const { conversation_id } = await request.json();
     if (!conversation_id) {
@@ -25,20 +22,18 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // 소유권 검증 + 인테이크/메시지 조회
+    // 인테이크/메시지 조회 + 멤버십 검증
     const { data: conv, error } = await supabase
       .from('conversations')
-      .select('id, academy_id, messages, parent_name, child_name, phone, academies!inner(owner_id)')
+      .select('id, academy_id, messages, parent_name, child_name, phone')
       .eq('id', conversation_id)
       .single();
 
     if (error || !conv) {
       return Response.json({ error: '대화를 찾을 수 없습니다.' }, { status: 404 });
     }
-    const ownerId = (conv.academies as unknown as { owner_id: string }).owner_id;
-    if (ownerId !== auth.userId) {
-      return Response.json({ error: '권한이 없습니다.' }, { status: 403 });
-    }
+    const m = await requireMember(request, conv.academy_id);
+    if (isAuthError(m)) return m;
 
     // 과목 목록(이름→id 매칭용)
     const { data: subjects } = await supabase

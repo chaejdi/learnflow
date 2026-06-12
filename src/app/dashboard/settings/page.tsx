@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Loader2, Check, Copy, CheckCheck } from 'lucide-react';
 import { useAcademy } from '@/hooks/useAcademy';
 import { apiFetch } from '@/lib/api-client';
+import StaffManagement from '@/components/dashboard/StaffManagement';
 
 interface AcademyForm {
   name: string;
@@ -24,7 +26,8 @@ const defaultForm: AcademyForm = {
 };
 
 export default function SettingsPage() {
-  const { academyId, isDemo, loading: academyLoading } = useAcademy();
+  const router = useRouter();
+  const { academyId, isDemo, role, loading: academyLoading } = useAcademy();
   const [form, setForm] = useState<AcademyForm>(defaultForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -75,6 +78,13 @@ export default function SettingsPage() {
     if (!academyLoading) fetchAcademy();
   }, [academyLoading, fetchAcademy]);
 
+  // 설정은 원장(owner) 전용 — 선생님(staff)은 대시보드로 돌려보낸다
+  useEffect(() => {
+    if (!academyLoading && role === 'staff') {
+      router.replace('/dashboard');
+    }
+  }, [academyLoading, role, router]);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
 
@@ -104,7 +114,7 @@ export default function SettingsPage() {
   const inputClass =
     'w-full h-10 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500';
 
-  if (loading || academyLoading) {
+  if (loading || academyLoading || role === 'staff') {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 size={28} className="animate-spin text-gray-300" />
@@ -264,6 +274,9 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* 직원(선생님) 관리 — 원장 전용 */}
+      {!isDemo && <StaffManagement isDemo={isDemo} />}
     </div>
   );
 }

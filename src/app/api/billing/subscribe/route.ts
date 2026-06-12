@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { requireOwnerRole, isAuthError } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
+  // 구독/결제 변경은 원장(owner) 전용
+  const m = await requireOwnerRole(request);
+  if (isAuthError(m)) return m;
 
   const { planId } = await request.json();
 
@@ -14,15 +15,10 @@ export async function POST(request: NextRequest) {
   const { getSupabase } = await import('@/lib/supabase');
   const supabase = getSupabase();
 
-  const { data: user } = await supabase
-    .from('users')
-    .select('academy_id')
-    .eq('id', auth.userId)
-    .single();
-
-  if (!user?.academy_id) {
+  if (!m.academyId) {
     return NextResponse.json({ error: '학원을 먼저 등록해주세요.' }, { status: 400 });
   }
+  const user = { academy_id: m.academyId };
 
   const { data: subscription } = await supabase
     .from('subscriptions')

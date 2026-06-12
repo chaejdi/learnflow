@@ -27,6 +27,21 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient();
 
+    // 이미 학원에 소속된 사용자(초대받은 선생님 등)는 새 학원을 만들지 않는다.
+    const { data: me } = await supabase
+      .from('users')
+      .select('academy_id')
+      .eq('id', auth.userId)
+      .maybeSingle();
+    if (me?.academy_id) {
+      const { data: myAcademy } = await supabase
+        .from('academies')
+        .select('*')
+        .eq('id', me.academy_id)
+        .maybeSingle();
+      if (myAcademy) return Response.json({ data: myAcademy });
+    }
+
     // 한 계정당 학원 하나 — 이미 있으면 그대로 반환(중복 생성 방지)
     const { data: existing } = await supabase
       .from('academies')

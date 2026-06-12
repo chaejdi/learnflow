@@ -1,19 +1,33 @@
 import { NextRequest } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { requireMember, isAuthError } from '@/lib/auth';
 import type { CreateSubjectRequest } from '@/types';
 
+// 과목이 속한 학원 id 조회(멤버십 검증용)
+async function getSubjectAcademy(
+  supabase: SupabaseClient,
+  subjectId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('subjects')
+    .select('academy_id')
+    .eq('id', subjectId)
+    .single();
+  return (data?.academy_id as string) ?? null;
+}
+
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
+  const academyId = request.nextUrl.searchParams.get('academy_id');
+  if (!academyId) {
+    return Response.json({ error: 'academy_id required' }, { status: 400 });
+  }
+
+  const m = await requireMember(request, academyId);
+  if (isAuthError(m)) return m;
 
   try {
     const supabase = getServiceClient();
-    const academyId = request.nextUrl.searchParams.get('academy_id');
-
-    if (!academyId) {
-      return Response.json({ error: 'academy_id required' }, { status: 400 });
-    }
 
     const { data, error } = await supabase
       .from('subjects')
@@ -31,9 +45,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const body: CreateSubjectRequest & { academy_id: string } =
       await request.json();
@@ -41,6 +52,9 @@ export async function POST(request: NextRequest) {
     if (!body.academy_id || !body.name) {
       return Response.json({ error: 'academy_id와 name은 필수입니다.' }, { status: 400 });
     }
+
+    const m = await requireMember(request, body.academy_id);
+    if (isAuthError(m)) return m;
 
     const supabase = getServiceClient();
 
@@ -69,9 +83,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const body = await request.json();
     const { id, ...updates } = body;
@@ -81,6 +92,13 @@ export async function PUT(request: NextRequest) {
     }
 
     const supabase = getServiceClient();
+
+    const academyId = await getSubjectAcademy(supabase, id);
+    if (!academyId) {
+      return Response.json({ error: '과목을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const m = await requireMember(request, academyId);
+    if (isAuthError(m)) return m;
 
     const { data, error } = await supabase
       .from('subjects')
@@ -99,9 +117,6 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const id = request.nextUrl.searchParams.get('id');
 
@@ -110,6 +125,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = getServiceClient();
+
+    const academyId = await getSubjectAcademy(supabase, id);
+    if (!academyId) {
+      return Response.json({ error: '과목을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const m = await requireMember(request, academyId);
+    if (isAuthError(m)) return m;
 
     const { error } = await supabase
       .from('subjects')

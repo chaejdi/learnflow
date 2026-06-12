@@ -57,16 +57,27 @@ function LoginForm() {
         return;
       }
 
+      // 먼저 소속 학원을 확인한다. 초대받은 선생님이면 여기서 자동수락되어 학원이 잡힌다.
+      let alreadyHasAcademy = false;
+      try {
+        const meRes = await apiFetch('/api/academies/me');
+        const me = await meRes.json();
+        alreadyHasAcademy = !!me?.data?.id;
+      } catch {
+        // 무시 — 아래 온보딩 로직으로 진행
+      }
+
       // 회원가입 때 보관해둔 학원 정보가 있으면 지금 생성한다(이메일 인증 후 첫 로그인).
+      // 단, 이미 소속 학원이 있으면(초대받은 선생님 등) 새 학원을 만들지 않는다.
       const pending = localStorage.getItem(PENDING_ACADEMY_KEY);
-      if (pending) {
+      if (pending && !alreadyHasAcademy) {
         try {
           await apiFetch('/api/academies', { method: 'POST', body: pending });
         } catch {
           // 실패해도 로그인은 진행 — 설정에서 다시 만들 수 있음
         }
-        localStorage.removeItem(PENDING_ACADEMY_KEY);
       }
+      localStorage.removeItem(PENDING_ACADEMY_KEY);
 
       router.push(redirectTo);
     } catch {

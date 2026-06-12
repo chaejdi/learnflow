@@ -1,19 +1,53 @@
 import { NextRequest } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { requireMember, isAuthError } from '@/lib/auth';
+
+// 과목이 속한 학원 id 조회(멤버십 검증용)
+async function academyOfSubject(
+  supabase: SupabaseClient,
+  subjectId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('subjects')
+    .select('academy_id')
+    .eq('id', subjectId)
+    .single();
+  return (data?.academy_id as string) ?? null;
+}
+
+// 체험슬롯이 속한 학원 id 조회(슬롯 → 과목 → 학원)
+async function academyOfSlot(
+  supabase: SupabaseClient,
+  slotId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('trial_slots')
+    .select('subjects(academy_id)')
+    .eq('id', slotId)
+    .single();
+  const subj = data?.subjects as unknown as { academy_id?: string } | null;
+  return subj?.academy_id ?? null;
+}
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
+  const academyId = request.nextUrl.searchParams.get('academy_id');
+  const subjectId = request.nextUrl.searchParams.get('subject_id');
+
+  if (!academyId && !subjectId) {
+    return Response.json({ error: 'academy_id 또는 subject_id가 필요합니다.' }, { status: 400 });
+  }
 
   try {
     const supabase = getServiceClient();
-    const academyId = request.nextUrl.searchParams.get('academy_id');
-    const subjectId = request.nextUrl.searchParams.get('subject_id');
 
-    if (!academyId && !subjectId) {
-      return Response.json({ error: 'academy_id 또는 subject_id가 필요합니다.' }, { status: 400 });
+    // 멤버십 검증 — academy_id 또는 subject_id 기준
+    const targetAcademy = academyId ?? (await academyOfSubject(supabase, subjectId!));
+    if (!targetAcademy) {
+      return Response.json({ error: '대상을 찾을 수 없습니다.' }, { status: 404 });
     }
+    const m = await requireMember(request, targetAcademy);
+    if (isAuthError(m)) return m;
 
     let query = supabase
       .from('trial_slots')
@@ -44,9 +78,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const body = await request.json();
     const { subject_id, date, time_start, time_end } = body;
@@ -59,6 +90,13 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getServiceClient();
+
+    const academyId = await academyOfSubject(supabase, subject_id);
+    if (!academyId) {
+      return Response.json({ error: '과목을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const m = await requireMember(request, academyId);
+    if (isAuthError(m)) return m;
 
     const { data, error } = await supabase
       .from('trial_slots')
@@ -82,9 +120,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
-
   try {
     const id = request.nextUrl.searchParams.get('id');
 
@@ -93,6 +128,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     const supabase = getServiceClient();
+
+    const academyId = await academyOfSlot(supabase, id);
+    if (!academyId) {
+      return Response.json({ error: '슬롯을 찾을 수 없습니다.' }, { status: 404 });
+    }
+    const m = await requireMember(request, academyId);
+    if (isAuthError(m)) return m;
 
     const { error } = await supabase
       .from('trial_slots')

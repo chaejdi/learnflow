@@ -7,17 +7,22 @@
 > 1. **개발·운영이 같은 Supabase**(`lorpaqfwkatavuzxayan`)를 씀. dev/운영 DB 분리 안 됨 → 로컬에서 `supabase db push`·시드·삭제 돌리면 **운영에 즉시 반영**. 파괴적 작업 주의.
 > 2. **GitHub 푸시로 자동배포 안 됨.** 프로덕션 반영하려면 `vercel --prod --yes` 수동 실행 필요.
 
-## 🔜 내일 할 일 (다음 세션 시작점) — 2026-06-12
+## ✅ 오늘 한 일 — 2026-06-12 (선생님 계정 기능)
 
-> 어제(6/11) 한 일: 카톡→예약 파이프라인 검증·버그수정, 예약 API 소유권 검증, extract 보강, 관리자(마스터) 페이지 신설. **전부 커밋·푸시 완료**(origin/main `9b7fb6d`). 단 **운영 미배포**.
+> 어제 적어둔 할 일 1·2 완료. **커밋·푸시 + 운영 배포까지 완료**. 마이그레이션 010은 `supabase db push`로 운영 DB 반영됨.
 
-1. **관리자 페이지 운영 배포** — 현재 `localhost:3000/admin`에서만 동작. `vercel --prod --yes` 하면 운영에서도 뜸(마스터 role은 이미 운영 DB 반영). → 외부/폰에서 확인 가능
-   - 확인법: `chaejdi2245@gmail.com` 로그인 → 사이드바 "관리자" → `/admin`. 다른 원장 계정은 접근 시 403(정상)
-2. **선생님(staff) 계정 기능 만들기** ← 어제 논의, 미구현. 현재는 `1학원=원장1계정`(role: admin=나, owner=원장만 동작, **staff는 스키마에만 있고 비어있음**)
-   - 만들 것: ① 원장이 설정에서 선생님 **이메일 초대** ② 권한검사 `owner_id 단독` → **"학원 소속 멤버(academy_id) + role별 차등"** 으로 확장 ③ **직원 관리 UI**(설정 탭)
-   - 권한 차등안(시작 전 확정 필요): 선생님=상담·예약 보기/답변 ✅ / 결제·학원설정·AI프롬프트·직원관리 ❌ / 시간표·과목 *수정* 허용여부는 **물어보기**
-3. (선택) **마스터 이메일 이중잠금** — role=admin 외에 이메일이 `chaejdi2245@gmail.com`인지도 코드에서 확인(이중 안전장치). 지금도 안전하나 belt-and-suspenders
-4. (배경) 실론칭 준비물은 [PRELAUNCH.md](./PRELAUNCH.md) — 토스·카카오 키, dev/운영 DB 분리, 데모데이터 삭제 등
+1. **관리자 페이지 운영 배포 완료** — `vercel --prod --yes`로 `/admin` 운영 반영. `chaejdi2245@gmail.com` 로그인 시 사이드바 "관리자" 노출.
+2. **선생님(staff) 계정 기능 구현 완료**
+   - **초대 방식**: 초대목록 테이블(`invitations`, 마이그레이션 010) + 초대한 이메일로 가입/로그인하면 자동수락(`getMembership`). SMTP 불필요.
+   - **권한 헬퍼**(`lib/auth.ts`): `getMembership`(소속·역할 해석+초대수락) / `requireMember`(학원 멤버) / `requireOwnerRole`(staff 차단).
+   - **권한 차등**(확정): 선생님 ✅ 상담·예약·과목·시간표(수정 포함) / ❌ 전환율 분석·결제·설정.
+   - **소유권 검증 전면 적용**: 기존엔 `reservations`만 검증됐고 `subjects·conversations·schedule-terms·trial-slots·schedules`는 **소유권 검사 없음(멀티테넌트 누수)**이었음 → 전부 `requireMember`로 막음. `schedules`는 아예 인증조차 없었음.
+   - **UI**: 사이드바 staff 탭 숨김, 설정에 **직원 관리** 섹션(초대/목록/해제), analytics·billing·settings 페이지 staff 가드(리다이렉트). `useAcademy`가 `role` 노출.
+3. (미완·선택) **마스터 이메일 이중잠금** — 아직 안 함. role=admin 외 이메일 확인 추가(belt-and-suspenders).
+4. (배경) 실론칭 준비물은 [PRELAUNCH.md](./PRELAUNCH.md).
+
+### 🔜 다음 세션 검증거리
+- 실제 2계정으로 E2E 확인: 원장이 선생님 이메일 초대 → 그 이메일로 회원가입 → 로그인 시 같은 학원 staff로 붙고, 전환율·결제·설정 탭 안 보이는지. (초대 자동수락이 로그인 첫 호출에서 동작하는지 실유저로 확인 권장)
 
 ---
 

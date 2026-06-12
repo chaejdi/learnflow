@@ -1,22 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/auth';
+import { requireOwnerRole, isAuthError } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(request);
-  if (isAuthError(auth)) return auth;
+  // 결제 정보는 원장(owner) 전용 — 선생님(staff)은 접근 불가
+  const m = await requireOwnerRole(request);
+  if (isAuthError(m)) return m;
 
   const { getSupabase } = await import('@/lib/supabase');
   const supabase = getSupabase();
 
-  const { data: user } = await supabase
-    .from('users')
-    .select('academy_id')
-    .eq('id', auth.userId)
-    .single();
-
-  if (!user?.academy_id) {
+  if (!m.academyId) {
     return NextResponse.json({ subscription: null, plan: null, usage: null });
   }
+  const user = { academy_id: m.academyId };
 
   const { data: subscription } = await supabase
     .from('subscriptions')

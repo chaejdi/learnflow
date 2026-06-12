@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/lib/api-client';
 
+export type Role = 'owner' | 'staff' | 'admin';
+
 function isSupabaseConfigured() {
   return !!(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -14,6 +16,7 @@ export function useAcademy() {
   const [academyId, setAcademyId] = useState<string>('');
   const [academyName, setAcademyName] = useState<string>('');
   const [token, setToken] = useState<string>('');
+  const [role, setRole] = useState<Role>('owner');
   const [isDemo, setIsDemo] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -33,10 +36,11 @@ export function useAcademy() {
       }
     } catch { /* ignore */ }
 
-    // 로그인한 원장님 본인의 학원만 조회 (owner_id = 로그인 유저)
+    // 로그인 사용자의 소속 학원 + 역할(role) 조회 (원장/선생님 모두)
     try {
       const res = await apiFetch('/api/academies/me');
       const json = await res.json();
+      if (json.role) setRole(json.role as Role);
       if (res.ok && json.data?.id) {
         localStorage.setItem('academy_id', json.data.id);
         setAcademyName(json.data.name || '');
@@ -57,5 +61,5 @@ export function useAcademy() {
     });
   }, [resolveAcademyId]);
 
-  return { academyId, academyName, token, isDemo, loading };
+  return { academyId, academyName, token, role, isDemo, loading };
 }

@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase';
+import { requireMember, isAuthError } from '@/lib/auth';
+
+// 시간표 row 가 속한 학원 id 조회(멤버십 검증용)
+async function academyOfSchedule(
+  supabase: SupabaseClient,
+  scheduleId: string
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('schedules')
+    .select('academy_id')
+    .eq('id', scheduleId)
+    .single();
+  return (data?.academy_id as string) ?? null;
+}
 
 // ===== 날짜 유틸 =====
 function ymd(d: Date): string {
@@ -35,6 +50,10 @@ export async function GET(request: NextRequest) {
   if (!academyId) {
     return NextResponse.json({ error: 'academy_id required' }, { status: 400 });
   }
+
+  const m = await requireMember(request, academyId);
+  if (isAuthError(m)) return m;
+
   const termId = request.nextUrl.searchParams.get('term_id');
   const weekStart = request.nextUrl.searchParams.get('week_start');
 
@@ -62,6 +81,9 @@ export async function POST(request: NextRequest) {
   if (!academy_id || !term_id || !subject_name || !day_of_week || !time_start || !time_end) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
+
+  const m = await requireMember(request, academy_id);
+  if (isAuthError(m)) return m;
 
   const supabase = getServiceClient();
   const seriesId = crypto.randomUUID();
@@ -119,6 +141,14 @@ export async function PATCH(request: NextRequest) {
   }
 
   const supabase = getServiceClient();
+
+  const academyId = await academyOfSchedule(supabase, id);
+  if (!academyId) {
+    return NextResponse.json({ error: '수업을 찾을 수 없습니다.' }, { status: 404 });
+  }
+  const m = await requireMember(request, academyId);
+  if (isAuthError(m)) return m;
+
   const updates = {
     ...(subject_id !== undefined && { subject_id }),
     ...(subject_name !== undefined && { subject_name }),
@@ -173,6 +203,13 @@ export async function DELETE(request: NextRequest) {
   }
 
   const supabase = getServiceClient();
+
+  const academyId = await academyOfSchedule(supabase, id);
+  if (!academyId) {
+    return NextResponse.json({ error: '수업을 찾을 수 없습니다.' }, { status: 404 });
+  }
+  const m = await requireMember(request, academyId);
+  if (isAuthError(m)) return m;
 
   if (scope === 'future') {
     const { data: base } = await supabase

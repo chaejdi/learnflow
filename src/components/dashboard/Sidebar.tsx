@@ -20,15 +20,16 @@ import {
 import { cn } from '@/lib/utils';
 import { useAcademy } from '@/hooks/useAcademy';
 import { apiFetch } from '@/lib/api-client';
+// ownerOnly: 선생님(staff)에게는 숨기는 탭 (전환율 분석·결제 관리·설정)
 const navItems = [
   { label: '대시보드', href: '/dashboard', icon: LayoutDashboard },
   { label: '상담 내역', href: '/dashboard/inquiries', icon: MessageSquare },
   { label: '예약 관리', href: '/dashboard/reservations', icon: CalendarDays },
   { label: '과목 관리', href: '/dashboard/subjects', icon: BookOpen },
   { label: '시간표 관리', href: '/dashboard/schedule', icon: Clock },
-  { label: '전환율 분석', href: '/dashboard/analytics', icon: TrendingUp },
-  { label: '결제 관리', href: '/dashboard/billing', icon: CreditCard },
-  { label: '설정', href: '/dashboard/settings', icon: Settings },
+  { label: '전환율 분석', href: '/dashboard/analytics', icon: TrendingUp, ownerOnly: true },
+  { label: '결제 관리', href: '/dashboard/billing', icon: CreditCard, ownerOnly: true },
+  { label: '설정', href: '/dashboard/settings', icon: Settings, ownerOnly: true },
 ];
 
 export default function Sidebar() {
@@ -36,7 +37,9 @@ export default function Sidebar() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isMaster, setIsMaster] = useState(false);
-  const { academyName, isDemo } = useAcademy();
+  const { academyName, isDemo, role } = useAcademy();
+  const isStaff = role === 'staff';
+  const visibleNavItems = navItems.filter((item) => !(isStaff && item.ownerOnly));
 
   useEffect(() => {
     setOpen(false);
@@ -84,7 +87,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 py-4 px-3 space-y-1">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const active =
             item.href === '/dashboard'
               ? pathname === '/dashboard'
