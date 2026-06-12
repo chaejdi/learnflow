@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, UserPlus, Mail, Trash2, Check, Clock } from 'lucide-react';
+import { Loader2, UserPlus, Mail, Trash2, Check, Clock, Copy, CheckCheck } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 
 interface Member {
@@ -17,7 +17,13 @@ interface Invitation {
   email: string;
   role: string;
   status: string;
+  token: string;
   created_at: string;
+}
+
+function inviteLink(token: string): string {
+  if (typeof window === 'undefined') return '';
+  return `${window.location.origin}/invite/${token}`;
 }
 
 const roleLabel: Record<string, string> = {
@@ -33,6 +39,13 @@ export default function StaffManagement({ isDemo }: { isDemo: boolean }) {
   const [email, setEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
+  const [copiedId, setCopiedId] = useState('');
+
+  function copyLink(inv: Invitation) {
+    navigator.clipboard.writeText(inviteLink(inv.token));
+    setCopiedId(inv.id);
+    setTimeout(() => setCopiedId(''), 2000);
+  }
 
   const fetchStaff = useCallback(async () => {
     if (isDemo) {
@@ -106,7 +119,8 @@ export default function StaffManagement({ isDemo }: { isDemo: boolean }) {
       <div>
         <h2 className="text-lg font-bold text-gray-900">직원(선생님) 관리</h2>
         <p className="text-sm text-gray-500 mt-1">
-          선생님을 이메일로 초대하세요. 초대한 이메일로 회원가입하면 자동으로 학원에 연결됩니다.
+          선생님 이메일로 초대하면 <span className="font-medium text-gray-700">초대 링크</span>가 만들어집니다.
+          그 링크를 카카오톡 등으로 선생님에게 보내면, 선생님이 비밀번호를 정해 바로 가입합니다. (이메일 발송 아님)
           선생님은 상담·예약·과목·시간표를 보고 관리할 수 있으며, 전환율 분석·결제·설정은 볼 수 없습니다.
         </p>
       </div>
@@ -178,20 +192,44 @@ export default function StaffManagement({ isDemo }: { isDemo: boolean }) {
               {invitations.map((inv) => (
                 <div
                   key={inv.id}
-                  className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50/50"
+                  className="px-3 py-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50/50 space-y-2"
                 >
-                  <div className="min-w-0 flex items-center gap-2">
-                    <Clock size={14} className="text-amber-500 flex-shrink-0" />
-                    <span className="text-sm text-gray-600 truncate">{inv.email}</span>
-                    <span className="text-xs text-amber-600 flex-shrink-0">가입 대기</span>
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <Clock size={14} className="text-amber-500 flex-shrink-0" />
+                      <span className="text-sm text-gray-600 truncate">{inv.email}</span>
+                      <span className="text-xs text-amber-600 flex-shrink-0">가입 대기</span>
+                    </div>
+                    <button
+                      onClick={() => handleRevoke(inv.id)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                      title="초대 취소"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleRevoke(inv.id)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
-                    title="초대 취소"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {/* 초대 링크 — 카톡 등으로 선생님에게 전달 */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={inviteLink(inv.token)}
+                      onFocus={(e) => e.target.select()}
+                      className="flex-1 h-8 px-2 rounded-md border border-gray-200 bg-white text-xs text-gray-600 font-mono select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => copyLink(inv)}
+                      className="h-8 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors flex items-center gap-1 text-xs text-gray-600 flex-shrink-0"
+                      title="초대 링크 복사"
+                    >
+                      {copiedId === inv.id ? (
+                        <><CheckCheck size={13} className="text-green-600" /> 복사됨</>
+                      ) : (
+                        <><Copy size={13} /> 링크 복사</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

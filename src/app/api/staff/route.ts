@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: true }),
       supabase
         .from('invitations')
-        .select('id, email, role, status, created_at')
+        .select('id, email, role, status, token, created_at')
         .eq('academy_id', m.academyId)
         .eq('status', 'pending')
         .order('created_at', { ascending: false }),
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     // 대기중 초대가 이미 있으면 그대로 반환(중복 방지)
     const { data: existingInvite } = await supabase
       .from('invitations')
-      .select('id, email, role, status, created_at')
+      .select('id, email, role, status, token, created_at')
       .eq('academy_id', m.academyId)
       .eq('status', 'pending')
       .ilike('email', email)
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
         role: 'staff',
         invited_by: m.userId,
       })
-      .select('id, email, role, status, created_at')
+      .select('id, email, role, status, token, created_at')
       .single();
 
     if (error) throw error;
