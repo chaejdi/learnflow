@@ -220,6 +220,16 @@ export async function requireOwnerRole(
  * 마스터(관리자) 권한 검증 — 로그인 + users.role='admin' 확인.
  * 런플로우 운영자 본인 계정만 전체 학원(고객사) 데이터에 접근할 수 있다.
  */
+// 마스터(런플로우 운영자) 허용 이메일.
+// env MASTER_EMAILS(쉼표구분)로 지정. 미설정 시 알려진 마스터 계정으로 폴백.
+function getMasterEmails(): string[] {
+  const raw = process.env.MASTER_EMAILS || 'chaejdi2245@gmail.com';
+  return raw
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export async function requireMaster(
   request: NextRequest
 ): Promise<AuthResult | Response> {
@@ -234,7 +244,10 @@ export async function requireMaster(
     .eq('id', auth.userId)
     .single();
 
-  if (!data || data.role !== 'admin') {
+  // 2차 안전장치: role=admin 이면서 이메일도 허용 목록에 있어야 통과(belt-and-suspenders).
+  // role 컬럼이 실수로/악의적으로 admin 으로 바뀌어도 이메일이 다르면 차단된다.
+  const emailAllowed = getMasterEmails().includes(auth.email.toLowerCase());
+  if (!data || data.role !== 'admin' || !emailAllowed) {
     return Response.json(
       { error: '관리자 권한이 필요합니다.' },
       { status: 403 }
